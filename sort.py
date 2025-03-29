@@ -31,10 +31,16 @@ def extract_timestamp(hl7_message):
         else:
             # Otherwise, directly convert it to a string
             timestamp = str(timestamp_field)  
-        
+        timestamp_without_timezone = timestamp
+        if "-" in timestamp:
+            timestamp_without_timezone = re.sub(r'[-+]\d{4}$', '', timestamp.strip())
+            integer_timestamp = int(timestamp_without_timezone)
+            integer_timestamp += 500
+            timestamp_without_timezone = str(integer_timestamp)
+        else:
+            timestamp_without_timezone = timestamp
         # Remove the timezone information from the timestamp
-        timestamp_without_timezone = re.sub(r'[-+]\d{4}$', '', timestamp.strip())
-        
+        # timestamp_without_timezone = re.sub(r'[-+]\d{4}$', '', timestamp.strip())
         # Return the timestamp as an integer after stripping any unwanted characters
         return int(timestamp_without_timezone) 
     
@@ -55,7 +61,7 @@ def sort_hl7_messages(input_file, output_file):
         file.write('\n'.join(sorted_messages))
 
 # Specify the input and output file paths
-input_file = 'raw.txt'  
+input_file = 'raw2.txt'  
 output_file = 'messages_sorted.txt' 
 
 sort_hl7_messages(input_file, output_file)
