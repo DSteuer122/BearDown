@@ -1,0 +1,67 @@
+import hl7
+
+
+def name_parse(name_string):
+    parts = name_string.split("^")  # Split by '^'
+    first = parts[0] if len(parts) > 0 else None
+    second = parts[1] if len(parts) > 1 else None
+    return first, second
+
+def parse_hl7_messages(file_path):
+    with open(file_path, 'r', encoding='utf-8') as file:
+        data = file.read()
+    
+    messages = ["MSH|" + msg.strip().replace('\n', '\r') for msg in data.split('MSH|') if msg.strip()]
+    return messages
+
+def extract_unique_mrns(input_file, output_file):
+    messages = parse_hl7_messages(input_file)
+    mrn_dict = {}  # Dictionary to store unique MRNs
+    
+    for message in messages:
+        h = hl7.parse(message)
+        for segment in h:
+            if str(segment[0]).strip() == 'PID':
+                if len(segment) > 4:  # Ensure PID-3 exists
+                    mrn = str(segment[4]).strip()
+                    lname, fname = name_parse(str(segment[5]))
+                    birthdate = str(segment[7]).strip()
+                    hphone = str(segment[13]).strip()
+                    bphone = str(segment[14]).strip()
+                    SSN = str(segment[19]).strip() if len(segment) > 19 else ''
+                    AcctN = str(segment[18]).strip()
+                    
+                    if mrn:
+                        new_data = {
+                            "mrn": mrn,
+                            "first name": fname,
+                            "last name": lname,
+                            "birthdate": birthdate,
+                            "hphone": hphone,
+                            "bphone": bphone,
+                            "SSN": SSN,
+                            "AcctN": AcctN
+                        }
+                        
+                        if mrn in mrn_dict:
+                            # For each key, update only if the new value is non-empty and the existing value is empty.
+                            for key in new_data:
+                                if new_data[key] and not mrn_dict[mrn][key]:
+                                    mrn_dict[mrn][key] = new_data[key]
+                        else:
+                            mrn_dict[mrn] = new_data
+
+    # Write unique MRNs to the output file
+    with open(output_file, 'w', encoding='utf-8') as file:
+        for mrn in mrn_dict:
+            file.write(mrn + '\n')
+            
+    return mrn_dict
+
+
+
+
+
+# Call the function to write to "output.txt"
+mrn_dict = extract_unique_mrns('raw.txt', 'output.txt')
+
