@@ -5,32 +5,59 @@ import json
 import datetime
 from difflib import SequenceMatcher
 
+def filter_messages_with_mrn(input_file, output_file):
+    """
+    Parses through raw.txt, removes messages without an MRN in PID.3,
+    and writes the filtered messages to a new file.
+    
+    Args:
+        input_file (str): Path to the input HL7 file
+        output_file (str): Path to write filtered messages
+        
+    Returns:
+        str: Path to the filtered output file
+    """
+    messages = parse_hl7_messages(input_file)
+    filtered_messages = []
+    
+    for message in messages:
+        h = hl7.parse(message)
+        has_mrn = False
+        
+        for segment in h:
+            if str(segment[0]).strip() == 'PID':
+                mrn_field = str(segment[3]).strip()
+                # Check if MRN field exists and is not empty
+                if len(mrn_field) > 0:
+                    has_mrn = True
+                break
+        
+        if has_mrn:
+            filtered_messages.append(message)
+    
+    # Write filtered messages to output file
+    with open(output_file, 'w', encoding='utf-8') as f:
+        for msg in filtered_messages:
+            f.write(msg + "\n")
+    
+    print(f"Filtered {len(messages) - len(filtered_messages)} messages without MRN. "
+          f"{len(filtered_messages)} messages remaining.")
+    return output_file
+
 def normalize_date(date_string):
-    """
-    Parse and normalize different date formats to a standard format.
-    Handles various date formats and returns a standardized YYYYMMDD format.
-    """
+    # [Previous normalize_date function remains unchanged]
     if not date_string:
         return None
         
-    # Store original for comparison
     original = date_string
-        
-    # Strip any non-alphanumeric characters for processing
     cleaned = re.sub(r'[^\w\s]', ' ', date_string.strip())
     
-    # Try different date formats
     formats = [
-        # Standard HL7 format
-        '%Y%m%d',
-        # Common variations
-        '%m/%d/%Y', '%d/%m/%Y', '%Y/%m/%d',
+        '%Y%m%d', '%m/%d/%Y', '%d/%m/%Y', '%Y/%m/%d',
         '%m-%d-%Y', '%d-%m-%Y', '%Y-%m-%d',
         '%m.%d.%Y', '%d.%m.%Y', '%Y.%m.%d',
-        # With textual month
         '%b %d, %Y', '%d %b, %Y', '%Y, %b %d',
         '%B %d, %Y', '%d %B, %Y', '%Y, %B %d',
-        # Two-digit year variations
         '%m/%d/%y', '%d/%m/%y', '%y/%m/%d',
         '%m-%d-%y', '%d-%m-%y', '%y-%m-%d',
     ]
@@ -38,40 +65,31 @@ def normalize_date(date_string):
     for fmt in formats:
         try:
             date_obj = datetime.datetime.strptime(cleaned, fmt)
-            # Return in standard HL7 format
-            normalized = date_obj.strftime('%Y%m%d')
-            return normalized
+            return date_obj.strftime('%Y%m%d')
         except ValueError:
             continue
     
-    # If we can't parse it with standard formats, try regex patterns
-    # Pattern for "YYYYMMDD"
     match = re.search(r'(\d{4})(\d{2})(\d{2})', cleaned)
     if match:
         year, month, day = match.groups()
         try:
             date_obj = datetime.datetime(int(year), int(month), int(day))
-            normalized = date_obj.strftime('%Y%m%d')
-            return normalized
+            return date_obj.strftime('%Y%m%d')
         except ValueError:
             pass
     
-    # Pattern for "MMDDYYYY" or "DDMMYYYY"
     match = re.search(r'(\d{1,2})[^\d]+(\d{1,2})[^\d]+(\d{4})', cleaned)
     if match:
-        # Try both MM/DD/YYYY and DD/MM/YYYY interpretations
         for month_idx, day_idx in [(0, 1), (1, 0)]:
             try:
                 month = int(match.group(month_idx + 1))
                 day = int(match.group(day_idx + 1))
                 year = int(match.group(3))
                 date_obj = datetime.datetime(year, month, day)
-                normalized = date_obj.strftime('%Y%m%d')
-                return normalized
+                return date_obj.strftime('%Y%m%d')
             except ValueError:
                 continue
     
-    # Return original if we couldn't parse it
     return date_string
 
 def is_same_date(date1, date2):
@@ -435,6 +453,9 @@ def compile(input_file, patient_dict, message_map, output_file):
             # Process each segment in the message
             for segment_idx, segment in enumerate(h):
                 segment_type = str(segment[0]).strip()
+                vID = ''
+                if segment_type == 'MSH':
+                    vID = str(segment[12]).strip()
                 if segment_type == 'PV1':
                     # Handle PV1 segment (doctor information)
                     name_string = str(segment[7])
@@ -586,18 +607,21 @@ def compile(input_file, patient_dict, message_map, output_file):
     
     return f"Modified {len(modified_messages)} HL7 messages written to {output_file}"
 
+
+# [All other existing functions remain unchanged: is_same_date, name_parse, etc.]
+
 def main():
     input_file = 'raw.txt'
+    filtered_file = 'filtered_raw.txt'  # New intermediate file
     output_mapping = 'output.txt'
     output_messages = 'fixed.txt'
     
+    # First filter messages to keep only those with MRN
+    filtered_input = filter_messages_with_mrn(input_file, filtered_file)
     
-    # Extract unique patients and create mapping
-    patient_dict, message_map = extract_unique_patients(input_file, output_mapping)
-    
-    # Compile modified messages
-    result = compile(input_file, patient_dict, message_map, output_messages)
-
+    # Then process the filtered messages
+    patient_dict, message_map = extract_unique_patients(filtered_file, output_mapping)
+    result = compile(filtered_file, patient_dict, message_map, output_messages)
 
 if __name__ == "__main__":
     main()
