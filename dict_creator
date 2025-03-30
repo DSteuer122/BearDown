@@ -572,7 +572,6 @@ def compile(input_file, patient_dict, message_map, output_file):
                             # Replace fields with anonymized data
                             if List[0][3] != '':
                                 List[0][3] = replace_identifiers24(List[0][3],patient_data['fake_mrn'], patient_data['fake_SSN'])
-                                print(List[0][3])
                             if List[0][5] != '':
                                 List[0][5] = replace_first_two_entries(
                                     List[0][5], 
@@ -596,7 +595,6 @@ def compile(input_file, patient_dict, message_map, output_file):
                             # Replace fields with anonymized data
                             if List[0][3] != '':
                                 List[0][3] = replace_identifiers25(List[0][3],patient_data['fake_mrn'], patient_data['fake_AcctN'])
-                                print(List[0][3])
                             if List[0][5] != '':
                                 List[0][5] = replace_first_two_entries(
                                     List[0][5], 
@@ -727,7 +725,7 @@ def main():
     input_file = 'raw.txt'
     filtered_file = 'filtered_raw.txt'  # New intermediate file
     output_mapping = 'output.txt'
-    output_messages = 'fixed.txt'
+    output_messages = 'messages_deidentified.txt'
     
     # First filter messages to keep only those with MRN
     filtered_input = filter_messages_with_mrn(input_file, filtered_file)
