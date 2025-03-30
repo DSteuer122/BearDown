@@ -45,23 +45,39 @@ def filter_messages_with_mrn(input_file, output_file):
     return output_file
 
 def normalize_date(date_string):
-    # [Previous normalize_date function remains unchanged]
+    """
+    Parse and normalize different date formats to a standard YYYYMMDD format.
+    Enhanced to handle textual month formats like 'May 5, 1990'.
+    """
     if not date_string:
         return None
         
+    # Store original for comparison
     original = date_string
-    cleaned = re.sub(r'[^\w\s]', ' ', date_string.strip())
+    # Strip whitespace and normalize separators
+    cleaned = re.sub(r'[^\w\s,]', ' ', date_string.strip()).strip()
     
+    # Standard datetime formats
     formats = [
-        '%Y%m%d', '%m/%d/%Y', '%d/%m/%Y', '%Y/%m/%d',
-        '%m-%d-%Y', '%d-%m-%Y', '%Y-%m-%d',
-        '%m.%d.%Y', '%d.%m.%Y', '%Y.%m.%d',
-        '%b %d, %Y', '%d %b, %Y', '%Y, %b %d',
-        '%B %d, %Y', '%d %B, %Y', '%Y, %B %d',
-        '%m/%d/%y', '%d/%m/%y', '%y/%m/%d',
-        '%m-%d-%y', '%d-%m-%y', '%y-%m-%d',
+        '%Y%m%d',           # 19900505
+        '%m/%d/%Y',        # 05/05/1990
+        '%d/%m/%Y',        # 05/05/1990
+        '%Y/%m/%d',        # 1990/05/05
+        '%m-%d-%Y',        # 05-05-1990
+        '%d-%m-%Y',        # 05-05-1990
+        '%Y-%m-%d',        # 1990-05-05
+        '%m.%d.%Y',        # 05.05.1990
+        '%d.%m.%Y',        # 05.05.1990
+        '%Y.%m.%d',        # 1990.05.05
+        '%m/%d/%y',        # 05/05/90
+        '%d/%m/%y',        # 05/05/90
+        '%y/%m/%d',        # 90/05/05
+        '%m-%d-%y',        # 05-05-90
+        '%d-%m-%y',        # 05-05-90
+        '%y-%m-%d',        # 90-05-05
     ]
     
+    # Try standard formats first
     for fmt in formats:
         try:
             date_obj = datetime.datetime.strptime(cleaned, fmt)
@@ -69,6 +85,34 @@ def normalize_date(date_string):
         except ValueError:
             continue
     
+    # Enhanced handling for textual months (e.g., "May 5, 1990")
+    month_map = {
+        'jan': 1, 'january': 1, 'feb': 2, 'february': 2, 'mar': 3, 'march': 3,
+        'apr': 4, 'april': 4, 'may': 5, 'jun': 6, 'june': 6, 'jul': 7, 'july': 7,
+        'aug': 8, 'august': 8, 'sep': 9, 'sept': 9, 'september': 9, 
+        'oct': 10, 'october': 10, 'nov': 11, 'november': 11, 'dec': 12, 'december': 12
+    }
+    
+    # Pattern for textual months: "May 5, 1990", "5 May 1990", "May 5 1990", etc.
+    textual_pattern = r'([A-Za-z]+)\s+(\d{1,2})[,\s]+(\d{4})|(\d{1,2})\s+([A-Za-z]+)[,\s]+(\d{4})'
+    match = re.search(textual_pattern, cleaned, re.IGNORECASE)
+    if match:
+        groups = match.groups()
+        if groups[0]:  # Month Day, Year format
+            month_str, day, year = groups[0], groups[1], groups[2]
+        else:  # Day Month Year format
+            day, month_str, year = groups[3], groups[4], groups[5]
+        
+        month_str = month_str.lower()
+        month = month_map.get(month_str) or month_map.get(month_str[:3])
+        if month and day and year:
+            try:
+                date_obj = datetime.datetime(int(year), month, int(day))
+                return date_obj.strftime('%Y%m%d')
+            except ValueError:
+                pass
+    
+    # Numeric pattern: "19900505"
     match = re.search(r'(\d{4})(\d{2})(\d{2})', cleaned)
     if match:
         year, month, day = match.groups()
@@ -78,9 +122,10 @@ def normalize_date(date_string):
         except ValueError:
             pass
     
+    # Numeric pattern with separators: "05/05/1990" or "05-05-1990"
     match = re.search(r'(\d{1,2})[^\d]+(\d{1,2})[^\d]+(\d{4})', cleaned)
     if match:
-        for month_idx, day_idx in [(0, 1), (1, 0)]:
+        for month_idx, day_idx in [(0, 1), (1, 0)]:  # Try both MM/DD/YYYY and DD/MM/YYYY
             try:
                 month = int(match.group(month_idx + 1))
                 day = int(match.group(day_idx + 1))
@@ -90,6 +135,7 @@ def normalize_date(date_string):
             except ValueError:
                 continue
     
+    # If all parsing attempts fail, return the original string
     return date_string
 
 def is_same_date(date1, date2):
@@ -433,6 +479,25 @@ def sanitize_non_pid_segment(segment_text, patient_data):
                     sanitized_text = sanitized_text.replace(date_str, "*")
     
     return sanitized_text
+def replace_identifiers24(input_string, mr_id, ssn):
+    modified_string = re.sub(r"A\d+", mr_id, input_string, count=1)
+    modified_string = re.sub(r"\d{3}-\d{2}-\d{4}", ssn, modified_string, count=1)
+    return modified_string
+def replace_identifiers25(input_string, first_id, third_id):
+    """
+    Replaces the first and third numeric identifiers in the given string with variables using regex.
+    
+    :param input_string: The input string containing identifiers.
+    :param first_id: The new first identifier to replace the existing one.
+    :param third_id: The new third identifier to replace the existing one.
+    :return: The modified string with updated identifiers.
+    """
+    matches = re.findall(r"W\d+", input_string)
+    if len(matches) >= 3:
+        modified_string = input_string.replace(matches[0], first_id, 1)
+        modified_string = modified_string.replace(matches[2], third_id, 1)
+        return modified_string
+    return input_string
 
 def compile(input_file, patient_dict, message_map, output_file):
     """
@@ -445,7 +510,7 @@ def compile(input_file, patient_dict, message_map, output_file):
     for message_idx, message in enumerate(messages):
         h = hl7.parse(message)
         modified_message = message
-        
+        vID = ''
         if message_idx in message_map:
             patient_key = message_map[message_idx]
             patient_data = patient_dict[patient_key]
@@ -453,7 +518,7 @@ def compile(input_file, patient_dict, message_map, output_file):
             # Process each segment in the message
             for segment_idx, segment in enumerate(h):
                 segment_type = str(segment[0]).strip()
-                vID = ''
+                
                 if segment_type == 'MSH':
                     vID = str(segment[12]).strip()
                 if segment_type == 'PV1':
@@ -498,33 +563,81 @@ def compile(input_file, patient_dict, message_map, output_file):
                     
                     # Replace PID segment in the message
                     modified_message = modified_message.replace(str(segment), modified_pv1, 1)   
-                        
+        
                 if segment_type == 'PID':
                     # Handle PID segments as before
                     List = split_message_lines(str(segment))
-                    
-                    if len(List) > 0 and len(List[0]) > 3:
-                        # Replace fields with anonymized data
-                        if List[0][3] != '':
-                            List[0][3] = patient_data["fake_mrn"]
-                        if List[0][5] != '':
-                            List[0][5] = replace_first_two_entries(
-                                List[0][5], 
-                                patient_data['fake_last_name'].lower(), 
-                                patient_data['fake_first_name'].lower()
-                            )
-                        if List[0][7] != '':
-                            List[0][7] = patient_data["fake_birthdate"]
-                        if List[0][11] != '' and List[0][11] != '^^^^^^^^':
-                            List[0][11] = patient_data["fake_Address"]
-                        if List[0][13] != '':
-                            List[0][13] = patient_data["fake_hphone"]
-                        if List[0][14] != '':
-                            List[0][14] = patient_data["fake_bphone"]
-                        if List[0][18] != '':
-                            List[0][18] = patient_data["fake_AcctN"]
-                        if len(List[0]) > 19 and List[0][19] != '':
-                            List[0][19] = patient_data["fake_SSN"]
+                    if vID == '2.4':
+                        if len(List) > 0 and len(List[0]) > 3:
+                            # Replace fields with anonymized data
+                            if List[0][3] != '':
+                                List[0][3] = replace_identifiers24(List[0][3],patient_data['fake_mrn'], patient_data['fake_SSN'])
+                                print(List[0][3])
+                            if List[0][5] != '':
+                                List[0][5] = replace_first_two_entries(
+                                    List[0][5], 
+                                    patient_data['fake_last_name'].lower(), 
+                                    patient_data['fake_first_name'].lower()
+                                )
+                            if List[0][7] != '':
+                                List[0][7] = patient_data["fake_birthdate"]
+                            if List[0][11] != '' and List[0][11] != '^^^^^^^^':
+                                List[0][11] = patient_data["fake_Address"]
+                            if List[0][13] != '':
+                                List[0][13] = patient_data["fake_hphone"]
+                            if List[0][14] != '':
+                                List[0][14] = patient_data["fake_bphone"]
+                            if List[0][18] != '':
+                                List[0][18] = patient_data["fake_AcctN"]
+                            if len(List[0]) > 19 and List[0][19] != '':
+                                List[0][19] = patient_data["fake_SSN"]
+                    if vID == '2.5':
+                        if len(List) > 0 and len(List[0]) > 3:
+                            # Replace fields with anonymized data
+                            if List[0][3] != '':
+                                List[0][3] = replace_identifiers25(List[0][3],patient_data['fake_mrn'], patient_data['fake_AcctN'])
+                                print(List[0][3])
+                            if List[0][5] != '':
+                                List[0][5] = replace_first_two_entries(
+                                    List[0][5], 
+                                    patient_data['fake_last_name'].lower(), 
+                                    patient_data['fake_first_name'].lower()
+                                )
+                            if List[0][7] != '':
+                                List[0][7] = patient_data["fake_birthdate"]
+                            if List[0][11] != '' and List[0][11] != '^^^^^^^^':
+                                List[0][11] = patient_data["fake_Address"]
+                            if List[0][13] != '':
+                                List[0][13] = patient_data["fake_hphone"]
+                            if List[0][14] != '':
+                                List[0][14] = patient_data["fake_bphone"]
+                            if List[0][18] != '':
+                                List[0][18] = patient_data["fake_AcctN"]
+                            if len(List[0]) > 19 and List[0][19] != '':
+                                List[0][19] = patient_data["fake_SSN"] 
+                    else:
+                        if len(List) > 0 and len(List[0]) > 3:
+                            # Replace fields with anonymized data
+                            if List[0][3] != '':
+                                List[0][3] = patient_data["fake_mrn"]
+                            if List[0][5] != '':
+                                List[0][5] = replace_first_two_entries(
+                                    List[0][5], 
+                                    patient_data['fake_last_name'].lower(), 
+                                    patient_data['fake_first_name'].lower()
+                                )
+                            if List[0][7] != '':
+                                List[0][7] = patient_data["fake_birthdate"]
+                            if List[0][11] != '' and List[0][11] != '^^^^^^^^':
+                                List[0][11] = patient_data["fake_Address"]
+                            if List[0][13] != '':
+                                List[0][13] = patient_data["fake_hphone"]
+                            if List[0][14] != '':
+                                List[0][14] = patient_data["fake_bphone"]
+                            if List[0][18] != '':
+                                List[0][18] = patient_data["fake_AcctN"]
+                            if len(List[0]) > 19 and List[0][19] != '':
+                                List[0][19] = patient_data["fake_SSN"]
                     
                     # Reconstruct the modified PID segment
                     modified_pid = '|'.join(List[0])
