@@ -11,8 +11,10 @@ def parse_hl7_messages():
         with open("raw.txt", "r", encoding="utf-8") as file:
             raw_data = file.read()
         
-        fixed_messages = ["MSH|" + msg.strip().replace('\n', '\r') for msg in fixed_data.split('MSH|') if msg.strip()]
-        raw_messages = ["MSH|" + msg.strip().replace('\n', '\r') for msg in raw_data.split('MSH|') if msg.strip()]
+        fixed_messages = ["MSH|" + msg.strip().replace('\n', '\r') 
+                          for msg in fixed_data.split('MSH|') if msg.strip()]
+        raw_messages = ["MSH|" + msg.strip().replace('\n', '\r') 
+                        for msg in raw_data.split('MSH|') if msg.strip()]
         parsed_messages = []
         
         raw_messages_count = 0
@@ -46,20 +48,59 @@ def parse_hl7_messages():
         st.error("Error: raw.txt file not found. Please place the file in the same directory as this script.")
         return pd.DataFrame()
 
-# Helper function to display message lines in separate styled boxes with overflow protection
+# Helper function to render a line with field/subfield tooltips
+def render_line_with_tooltips(line):
+    # Split the line into fields based on the pipe separator
+    fields = line.split("|")
+    # The segment name is the first field; label it as field 00.
+    seg_name = fields[0]
+    rendered_fields = []
+    # Render the segment name with tooltip (e.g., PID-00)
+    rendered_fields.append(
+        f'<span title="{seg_name}-00" style="border: 1px solid #ccc; padding:2px; margin:2px; display:inline-block;">{seg_name}</span>'
+    )
+    # Iterate over the remaining fields
+    for idx, field in enumerate(fields[1:], start=1):
+        # Create a tooltip label for the field using two-digit formatting
+        field_label = f"{seg_name}-{idx:02d}"
+        if "^" in field:
+            # If subfields exist, split them and render each with its own tooltip
+            subfields = field.split("^")
+            rendered_subfields = []
+            for sub_idx, sub in enumerate(subfields, start=1):
+                sub_label = f"{field_label}.{sub_idx}"
+                rendered_subfields.append(
+                    f'<span title="{sub_label}" style="border: 1px dashed #aaa; padding:2px; margin:2px; display:inline-block;">{sub}</span>'
+                )
+            # Join subfields with a caret separator visually
+            field_html = " ^ ".join(rendered_subfields)
+        else:
+            field_html = f'<span title="{field_label}" style="border: 1px solid #ccc; padding:2px; margin:2px; display:inline-block;">{field}</span>'
+        rendered_fields.append(field_html)
+    # Join all rendered fields with a visible pipe separator
+    return " | ".join(rendered_fields)
+
+# Helper function to display message details with tooltips per line
 def display_message_details(message_text):
-    # Replace carriage returns with newlines for proper display
+    # Replace carriage returns with newlines and split into lines
     lines = message_text.replace('\r', '\n').split("\n")
     for line in lines:
         if line.strip():
-            # Extract the box title from the beginning of the line (up to first "|")
-            header = line.split("|")[0]
-            # Use custom HTML for a non-editable styled box with white text and overflow protection
+            # Render the line with tooltips for each field/subfield
+            rendered_line = render_line_with_tooltips(line)
+            # Output each line in its own styled container with overflow protection
             st.markdown(
                 f"""
-                <div style="background-color: #333; padding: 8px; margin: 4px 0; border-radius: 4px; overflow-wrap: break-word; word-wrap: break-word;">
-                    <div style="font-weight: bold; color: white;">{header}</div>
-                    <div style="color: white; white-space: pre-wrap; overflow-wrap: break-word; word-wrap: break-word;">{line}</div>
+                <div style="
+                    background-color: #333; 
+                    padding: 8px; 
+                    margin: 4px 0; 
+                    border-radius: 4px; 
+                    overflow-wrap: break-word; 
+                    word-wrap: break-word;
+                    white-space: pre-wrap;
+                    color: white;">
+                    {rendered_line}
                 </div>
                 """, unsafe_allow_html=True
             )
