@@ -65,7 +65,6 @@ def extract_unique_patients(input_file, output_file):
                 mrn = str(segment[3]).strip()
                 #checks for PID.3 edge cases and repairs them
                 if len(mrn) > 15:
-                    print(h)
                     PFIlist = parselist(h)
                     if len(PFIlist) == 3:
                         mrn = PFIlist['MR']
