@@ -1,11 +1,11 @@
 import re
 
-# Function to redact sensitive information in a specific HL7 line
+# redact function
 def redact_hl7_line(line, first_name, last_name):
-    # Split the line by the pipes
+    # parse by |
     temp = line.split('|')
 
-    # Where PHI is included (sensitive indices)
+    # sections phi may be
     sensitive_indices = {
         'PID': [2, 3, 4, 5, 6, 7, 9, 11, 12, 13, 14, 18, 19, 20, 21, 29, 30, 31],  
         'NK1': [2, 3, 4, 5, 6, 7, 8, 10, 12, 16, 26, 30, 31, 32, 33, 37],  
@@ -13,16 +13,16 @@ def redact_hl7_line(line, first_name, last_name):
         'EVN': [5],  
     }
 
-    # If the type is one of the fields
+    # only analyze phi topics
     segment_type = temp[0]
 
     if segment_type in sensitive_indices:
         for i in sensitive_indices[segment_type]:
-            # Replace sensitive fields with "*", if index exists in the segment
+            # redacts with *
             if i < len(temp): 
                 temp[i] = "*"  
 
-    # **Redact Names in OBX-5 (free-text field)**
+    #takes names out of obx comments
     if len(temp) > 5 and segment_type == 'OBX':
         text_to_redact = temp[5]
 
@@ -33,23 +33,20 @@ def redact_hl7_line(line, first_name, last_name):
 
         temp[5] = text_to_redact
 
-    # **Redact Names in NTE-3 (free-text comments)**
+    # takes names out of nte comments
     if len(temp) > 2 and segment_type == 'NTE':
         text_to_redact = temp[2]
 
 
-        #print(text_to_redact)
-        # Check for 'ID' in the NTE text, replace all numbers (0-9) with #
+        
+        # takes out ssn numbers
         if "ID" in text_to_redact:
             
             text_to_redact = re.sub(r'[0-9]', '*', text_to_redact)  # Replace all digits (0-9) with #
 
-        # Check for 'birthdate' in the NTE text, replace months and dates with ##
+        # checks to see if birthdates are in comments
         if "birthdate" in text_to_redact.lower():
-            # Replace month names with ##
-            # text_to_redact = re.sub(r'\b(January|February|March|April|May|June|July|August|September|October|November|December)\b', '##', text_to_redact)
-            # # Replace all digits with ##
-            # text_to_redact = re.sub(r'\d', '#', text_to_redact)
+            # replaces with #
             text_to_redact = re.sub(r'\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}\b', '*', text_to_redact)
 
         # Check for 'cinco de mayo' and replace with #
@@ -68,7 +65,7 @@ def redact_hl7_line(line, first_name, last_name):
 
         if "ID" in text_to_redact:
             
-            text_to_redact = re.sub(r'\d{3}-\d{2}-\d{4}', '*', text_to_redact)  # Replace all digits (0-9) with #
+            text_to_redact = re.sub(r'\d{3}-\d{2}-\d{4}', '*', text_to_redact)  # takes out ssn
         temp[3] = text_to_redact
         
 
@@ -85,21 +82,20 @@ def redact_hl7_file(input_file, output_file):
         for line in inFile:
             line = line.rstrip()
 
-            # Check for MSH segment to reset first and last name
+            # resets info for every msh header
             if line.startswith("MSH"):
-                # Reset first and last names at the start of each MSH segment
                 first_name = None
                 last_name = None
 
-            # Extract names if we are in the PID segment
+            # stores names for later use
             if line.startswith("PID"):
                 temp = line.split('|')
                 if len(temp) > 5:
-                    # Attempt to extract first and last name (assuming positions 5 and 6 contain the name)
-                    name_parts = temp[5].split('^')  # Name is typically in 5th field, format: first^middle^last
+                    
+                    name_parts = temp[5].split('^') 
                     if len(name_parts) > 1:
                         first_name = name_parts[1]
-                        last_name = name_parts[0]  # Last name typically comes first in HL7 format
+                        last_name = name_parts[0] 
 
             # Process the line and redact if necessary
             if line.strip():  # Process only non-empty lines
