@@ -315,7 +315,7 @@ def compile(input_file, patient_dict, message_map, output_file):
             for segment in h:
                 segment_type = str(segment[0]).strip()
                 if str(segment[0]).strip() == 'PV1':
-                    name_string = str(segment[8])
+                    name_string = str(segment[7])
                     if name_string not in doctor_dict:
                         lname, fname = RG.generate_unique_fake_name()
                         docID = ''
@@ -324,15 +324,33 @@ def compile(input_file, patient_dict, message_map, output_file):
                         elif len(lname) > 4:
                             docID = lname[:4].lower() 
                         doctor_dict[name_string] = f"{docID}^{lname}^{fname}^^^^MD"
+                    name_string1 = str(segment[8])
+                    if name_string1 not in doctor_dict:
+                        lname, fname = RG.generate_unique_fake_name()
+                        docID = ''
+                        if len(lname)>3 and len(lname) > 2:
+                            docID = (lname[:3] + fname[:2]).upper()
+                        elif len(lname) > 4:
+                            docID = lname[:4].lower() 
+                        doctor_dict[name_string1] = f"{docID}^{lname}^{fname}^^^^MD"
+                    name_string2 = str(segment[9])
+                    if name_string2 not in doctor_dict:
+                        lname, fname = RG.generate_unique_fake_name()
+                        docID = ''
+                        if len(lname)>3 and len(lname) > 2:
+                            docID = (lname[:3] + fname[:2]).upper()
+                        elif len(lname) > 4:
+                            docID = lname[:4].lower() 
+                        doctor_dict[name_string2] = f"{docID}^{lname}^{fname}^^^^MD"
                     List = split_message_lines(str(segment))
                     
                     if len(List)>0 and len(List[0]) > 7:
                         if List[0][7] != '':
                             List[0][7] = doctor_dict[name_string]
                         if List[0][8] != '':
-                            List[0][8] = doctor_dict[name_string]
+                            List[0][8] = doctor_dict[name_string1]
                         if List[0][9] != '':
-                            List[0][9] = doctor_dict[name_string]   
+                            List[0][9] = doctor_dict[name_string2]   
                     modified_pv1 = '|'.join(List[0])
                     
                     # Replace PID segment in the message
