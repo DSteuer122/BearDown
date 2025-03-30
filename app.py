@@ -101,6 +101,7 @@ def parse_hl7_messages():
         return pd.DataFrame()
 
 # Render the inline representation with tooltips.
+# Render the inline representation with tooltips.
 def render_line_inline(line):
     fields = line.split("|")
     seg_name = fields[0]
@@ -108,21 +109,68 @@ def render_line_inline(line):
     rendered_fields.append(
         f'<span title="{seg_name}-00" style="border:1px solid #ccc; padding:2px 4px; margin:2px; display:inline-block;">{seg_name}</span>'
     )
-    for idx, field in enumerate(fields[1:], start=1):
-        field_label = f"{seg_name}-{idx:02d}"
-        if "^" in field:
-            subfields = field.split("^")
-            rendered_subfields = []
-            for sub_idx, sub in enumerate(subfields, start=1):
-                sub_label = f"{field_label}.{sub_idx}"
-                rendered_subfields.append(
-                    f'<span title="{sub_label}" style="border:1px dashed #aaa; padding:2px 4px; margin:2px; display:inline-block;">{sub}</span>'
-                )
-            field_html = " ^ ".join(rendered_subfields)
-        else:
-            field_html = f'<span title="{field_label}" style="border:1px solid #ccc; padding:2px 4px; margin:2px; display:inline-block;">{field}</span>'
-        rendered_fields.append(field_html)
-    return " | ".join(rendered_fields)
+    
+    # Special handling for MSH segment
+    if seg_name == "MSH":
+        # For MSH, the first pipe is actually MSH-01
+        rendered_fields.append(
+            f'<span title="MSH-01" style="border:1px solid #ccc; padding:2px 4px; margin:2px; display:inline-block;">|</span>'
+        )
+        # Start indexing from 2 for remaining fields in MSH
+        start_idx = 2
+        
+        # Process first field (index 1 in the original fields array) without a leading pipe
+        if len(fields) > 1:
+            field = fields[1]
+            field_label = f"{seg_name}-{start_idx:02d}"
+            if "^" in field and field != "^~\&":
+                subfields = field.split("^")
+                rendered_subfields = []
+                for sub_idx, sub in enumerate(subfields, start=1):
+                    sub_label = f"{field_label}.{sub_idx}"
+                    rendered_subfields.append(
+                        f'<span title="{sub_label}" style="border:1px dashed #aaa; padding:2px 4px; margin:2px; display:inline-block;">{sub}</span>'
+                    )
+                field_html = " ^ ".join(rendered_subfields)
+            else:
+                field_html = f'<span title="{field_label}" style="border:1px solid #ccc; padding:2px 4px; margin:2px; display:inline-block;">{field}</span>'
+            rendered_fields.append(field_html)
+            
+            # Process remaining fields (index 2+ in the original fields array) with leading pipes
+            for idx, field in enumerate(fields[2:], start=start_idx+1):
+                field_label = f"{seg_name}-{idx:02d}"
+                if "^" in field and field != "^~\&":
+                    subfields = field.split("^")
+                    rendered_subfields = []
+                    for sub_idx, sub in enumerate(subfields, start=1):
+                        sub_label = f"{field_label}.{sub_idx}"
+                        rendered_subfields.append(
+                            f'<span title="{sub_label}" style="border:1px dashed #aaa; padding:2px 4px; margin:2px; display:inline-block;">{sub}</span>'
+                        )
+                    field_html = " ^ ".join(rendered_subfields)
+                else:
+                    field_html = f'<span title="{field_label}" style="border:1px solid #ccc; padding:2px 4px; margin:2px; display:inline-block;">{field}</span>'
+                rendered_fields.append(" | " + field_html)
+        
+        return "".join(rendered_fields)
+    else:
+        # Normal handling for non-MSH segments
+        for idx, field in enumerate(fields[1:], start=1):
+            field_label = f"{seg_name}-{idx:02d}"
+            if "^" in field and field != "^~\&":
+                subfields = field.split("^")
+                rendered_subfields = []
+                for sub_idx, sub in enumerate(subfields, start=1):
+                    sub_label = f"{field_label}.{sub_idx}"
+                    rendered_subfields.append(
+                        f'<span title="{sub_label}" style="border:1px dashed #aaa; padding:2px 4px; margin:2px; display:inline-block;">{sub}</span>'
+                    )
+                field_html = " ^ ".join(rendered_subfields)
+            else:
+                field_html = f'<span title="{field_label}" style="border:1px solid #ccc; padding:2px 4px; margin:2px; display:inline-block;">{field}</span>'
+            rendered_fields.append(field_html)
+        
+        return " | ".join(rendered_fields)
 
 # Build a two-column table (HTML) for the dropdown details.
 def render_field_details_table(line):
@@ -133,7 +181,113 @@ def render_field_details_table(line):
         f"<tr><td style='padding:2px 4px; border:1px solid #555;'><strong>{seg_name}-00</strong></td>"
         f"<td style='padding:2px 4px; border:1px solid #555;'>{fields[0]}</td></tr>"
     )
-    for idx, field in enumerate(fields[1:], start=1):
+    
+    # Special handling for MSH segment
+    if seg_name == "MSH":
+        # Add MSH-01 row for the pipe character
+        rows.append(
+            f"<tr><td style='padding:2px 4px; border:1px solid #555;'><strong>MSH-01</strong></td>"
+            f"<td style='padding:2px 4px; border:1px solid #555;'>|</td></tr>"
+        )
+        # Start indexing from 2 for remaining fields in MSH
+        start_idx = 2
+    else:
+        start_idx = 1
+    
+    for idx, field in enumerate(fields[1:], start=start_idx):
+        field_label = f"{seg_name}-{idx:02d}"
+        if "^" not in field:
+            rows.append(
+                f"<tr><td style='padding:2px 4px; border:1px solid #555;'><strong>{field_label}</strong></td>"
+                f"<td style='padding:2px 4px; border:1px solid #555;'>{field}</td></tr>"
+            )
+        else:
+            subfields = field.split("^")
+            rows.append(
+                f"<tr><td style='padding:2px 4px; border:1px solid #555;'><strong>{field_label}</strong></td>"
+                f"<td style='padding:2px 4px; border:1px solid #555;'></td></tr>"
+            )
+            for sub_idx, sub in enumerate(subfields, start=1):
+                rows.append(
+                    f"<tr><td style='padding:2px 4px; border:1px solid #555; padding-left:16px;'><em>{field_label}.{sub_idx}</em></td>"
+                    f"<td style='padding:2px 4px; border:1px solid #555; padding-left:16px;'>{sub}</td></tr>"
+                )
+    table_html = (
+        "<table style='width:100%; border-collapse:collapse; font-size:0.9em;'>"
+        + "".join(rows)
+        + "</table>"
+    )
+    return table_html
+
+# Build a two-column table (HTML) for the dropdown details.
+def render_field_details_table(line):
+    fields = line.split("|")
+    seg_name = fields[0]
+    rows = []
+    rows.append(
+        f"<tr><td style='padding:2px 4px; border:1px solid #555;'><strong>{seg_name}-00</strong></td>"
+        f"<td style='padding:2px 4px; border:1px solid #555;'>{fields[0]}</td></tr>"
+    )
+    
+    # Special handling for MSH segment
+    if seg_name == "MSH":
+        # Add MSH-01 row for the pipe character
+        rows.append(
+            f"<tr><td style='padding:2px 4px; border:1px solid #555;'><strong>MSH-01</strong></td>"
+            f"<td style='padding:2px 4px; border:1px solid #555;'>|</td></tr>"
+        )
+        # Start indexing from 2 for remaining fields in MSH
+        start_idx = 2
+    else:
+        start_idx = 1
+    
+    for idx, field in enumerate(fields[1:], start=start_idx):
+        field_label = f"{seg_name}-{idx:02d}"
+        if "^" not in field:
+            rows.append(
+                f"<tr><td style='padding:2px 4px; border:1px solid #555;'><strong>{field_label}</strong></td>"
+                f"<td style='padding:2px 4px; border:1px solid #555;'>{field}</td></tr>"
+            )
+        else:
+            subfields = field.split("^")
+            rows.append(
+                f"<tr><td style='padding:2px 4px; border:1px solid #555;'><strong>{field_label}</strong></td>"
+                f"<td style='padding:2px 4px; border:1px solid #555;'></td></tr>"
+            )
+            for sub_idx, sub in enumerate(subfields, start=1):
+                rows.append(
+                    f"<tr><td style='padding:2px 4px; border:1px solid #555; padding-left:16px;'><em>{field_label}.{sub_idx}</em></td>"
+                    f"<td style='padding:2px 4px; border:1px solid #555; padding-left:16px;'>{sub}</td></tr>"
+                )
+    table_html = (
+        "<table style='width:100%; border-collapse:collapse; font-size:0.9em;'>"
+        + "".join(rows)
+        + "</table>"
+    )
+    return table_html
+# Build a two-column table (HTML) for the dropdown details.
+def render_field_details_table(line):
+    fields = line.split("|")
+    seg_name = fields[0]
+    rows = []
+    rows.append(
+        f"<tr><td style='padding:2px 4px; border:1px solid #555;'><strong>{seg_name}-00</strong></td>"
+        f"<td style='padding:2px 4px; border:1px solid #555;'>{fields[0]}</td></tr>"
+    )
+    
+    # Special handling for MSH segment
+    if seg_name == "MSH":
+        # Add MSH-01 row for the pipe character
+        rows.append(
+            f"<tr><td style='padding:2px 4px; border:1px solid #555;'><strong>MSH-01</strong></td>"
+            f"<td style='padding:2px 4px; border:1px solid #555;'>|</td></tr>"
+        )
+        # Start indexing from 2 for remaining fields in MSH
+        start_idx = 2
+    else:
+        start_idx = 1
+    
+    for idx, field in enumerate(fields[1:], start=start_idx):
         field_label = f"{seg_name}-{idx:02d}"
         if "^" not in field:
             rows.append(
