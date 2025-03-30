@@ -42,18 +42,19 @@ def redact_hl7_line(line, first_name, last_name):
         # Check for 'ID' in the NTE text, replace all numbers (0-9) with #
         if "ID" in text_to_redact:
             
-            text_to_redact = re.sub(r'[0-9]', '#', text_to_redact)  # Replace all digits (0-9) with #
+            text_to_redact = re.sub(r'[0-9]', '*', text_to_redact)  # Replace all digits (0-9) with #
 
         # Check for 'birthdate' in the NTE text, replace months and dates with ##
         if "birthdate" in text_to_redact.lower():
             # Replace month names with ##
-            text_to_redact = re.sub(r'\b(January|February|March|April|May|June|July|August|September|October|November|December)\b', '##', text_to_redact)
-            # Replace all digits with ##
-            text_to_redact = re.sub(r'\d', '#', text_to_redact)
+            # text_to_redact = re.sub(r'\b(January|February|March|April|May|June|July|August|September|October|November|December)\b', '##', text_to_redact)
+            # # Replace all digits with ##
+            # text_to_redact = re.sub(r'\d', '#', text_to_redact)
+            text_to_redact = re.sub(r'\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}\b', '*', text_to_redact)
 
         # Check for 'cinco de mayo' and replace with #
         if "cinco de mayo" in text_to_redact.lower():  # Case-insensitive check
-            text_to_redact = re.sub(r'cinco de mayo', '#', text_to_redact, flags=re.IGNORECASE)
+            text_to_redact = re.sub(r'cinco de mayo', '*', text_to_redact, flags=re.IGNORECASE)
 
         
 
@@ -67,7 +68,7 @@ def redact_hl7_line(line, first_name, last_name):
 
         if "ID" in text_to_redact:
             
-            text_to_redact = re.sub(r'[0-9]', '#', text_to_redact)  # Replace all digits (0-9) with #
+            text_to_redact = re.sub(r'\d{3}-\d{2}-\d{4}', '*', text_to_redact)  # Replace all digits (0-9) with #
         temp[3] = text_to_redact
         
 
