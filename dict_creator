@@ -259,6 +259,41 @@ def extract_unique_patients(input_file, output_file):
     
     return patient_dict, message_to_patient_map
 
+def sanitize_non_pid_segment(segment_text, patient_data):
+    """
+    Sanitizes non-PID segments by replacing any occurrences of sensitive patient data
+    with a single asterisk.
+    
+    Args:
+        segment_text (str): Text of the segment to be sanitized
+        patient_data (dict): Dictionary containing patient sensitive data
+        
+    Returns:
+        str: Sanitized segment text
+    """
+    # List of sensitive data fields to check for
+    sensitive_data = [
+        patient_data.get("first_name", ""),
+        patient_data.get("last_name", ""),
+        patient_data.get("SSN", ""),
+        patient_data.get("mrn", ""),
+        patient_data.get("birthdate", ""),
+        patient_data.get("AcctN", ""),
+        patient_data.get("hphone", ""),
+        patient_data.get("bphone", "")
+    ]
+    
+    # Filter out empty values and sort by length (longest first) to prevent partial matches
+    sensitive_data = [data for data in sensitive_data if data and len(data) > 2]
+    sensitive_data.sort(key=len, reverse=True)
+    
+    # Replace each sensitive data with an asterisk
+    sanitized_text = segment_text
+    for data in sensitive_data:
+        sanitized_text = re.sub(re.escape(data), "*", sanitized_text)
+    
+    return sanitized_text
+
 def compile(input_file, patient_dict, message_map, output_file):
     """
     Compiles modified HL7 messages using the patient dictionary and message mapping.
@@ -274,9 +309,12 @@ def compile(input_file, patient_dict, message_map, output_file):
             patient_key = message_map[message_idx]
             patient_data = patient_dict[patient_key]
             
+            # Process each segment in the message
             for segment in h:
-                if str(segment[0]).strip() == 'PID':
-                    # Convert PID segment to list for modification
+                segment_type = str(segment[0]).strip()
+                
+                if segment_type == 'PID':
+                    # Handle PID segments as before
                     List = split_message_lines(str(segment))
                     
                     if len(List) > 0 and len(List[0]) > 3:
@@ -307,6 +345,14 @@ def compile(input_file, patient_dict, message_map, output_file):
                     
                     # Replace PID segment in the message
                     modified_message = modified_message.replace(str(segment), modified_pid, 1)
+                else:
+                    # For non-PID segments, sanitize any sensitive data
+                    segment_text = str(segment)
+                    sanitized_segment = sanitize_non_pid_segment(segment_text, patient_data)
+                    
+                    # Replace the segment in the modified message if changes were made
+                    if sanitized_segment != segment_text:
+                        modified_message = modified_message.replace(segment_text, sanitized_segment, 1)
         
         modified_messages.append(modified_message)
     
