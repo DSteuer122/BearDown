@@ -1,5 +1,6 @@
 import hl7
 import re
+import RandomGenerator as RG
 
 def name_parse(name_string):
     parts = name_string.split("^")  # Split by '^'
@@ -74,16 +75,43 @@ def extract_unique_patients(input_file, output_file):
                         SSN = PFIlist['SS']
                 patient_key = mrn if mrn else f"{lname}_{fname}_{birthdate}"
 
+                # new_data = {
+                #     "mrn": mrn,
+                #     "first name": fname,
+                #     "last name": lname,
+                #     "birthdate": birthdate,
+                #     "hphone": hphone,
+                #     "bphone": bphone,
+                #     "SSN": SSN,
+                #     "AcctN": AcctN
+                # }
+                
+                fake_MRN = RG.generate_MRN()
+                fake_lname, fake_fname = RG.generate_unique_fake_name()
+                fake_birthdate = RG.generate_fake_birthday(birthdate)
+                fake_hphone = RG.generate_phone_number()
+                fake_bphone = RG.generate_phone_number()
+                fake_SSN = RG.generate_SSN()
+                fake_AcctN = RG.generate_account_number()
+                
                 new_data = {
-                    "mrn": mrn,
-                    "first name": fname,
-                    "last name": lname,
-                    "birthdate": birthdate,
-                    "hphone": hphone,
-                    "bphone": bphone,
-                    "SSN": SSN,
-                    "AcctN": AcctN
-                }
+                            "mrn": mrn,
+                            "first name": fname,
+                            "last name": lname,
+                            "birthdate": birthdate,
+                            "hphone": hphone,
+                            "bphone": bphone,
+                            "SSN": SSN,
+                            "AcctN": AcctN,
+                            "fake_mrn": fake_MRN,
+                            "fake_first name": fake_fname,
+                            "fake_last name": fake_lname,
+                            "fake_birthdate": fake_birthdate,
+                            "fake_hphone": fake_hphone,
+                            "fake_bphone": fake_bphone,
+                            "fake_SSN": fake_SSN,
+                            "fake_AcctN": fake_AcctN
+                        }
 
                 # Check if the patient already exists in dictionary and merge data
                 if patient_key in patient_dict:

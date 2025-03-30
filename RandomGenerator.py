@@ -3,7 +3,7 @@ import string
 from datetime import datetime
 
 # Names
-# • Address: Including street address, city, county, precinct, and ZIP code done
+# • Address: Including street address, city, county, precinct, and ZIP code done Look at state !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 # • Birthdate done
 # • Ages over 89: These must be aggregated into a single category of 90 or older.
 # • Telephone Numbers done
@@ -61,10 +61,12 @@ used_fake_names = set()
 def generate_unique_fake_name():
     """Generates a non-overlapping fake name"""
     while True:
-        fake_name = f"{random.choice(first_names)} {random.choice(last_names)}"
+        fname = random.choice(first_names)
+        lname = random.choice(last_names)
+        fake_name = fname + " " + lname
         if fake_name not in used_fake_names:
             used_fake_names.add(fake_name)
-            return fake_name
+            return lname, fname
 
 
 
@@ -82,6 +84,8 @@ def calculate_age(year, month, day):
 
 def generate_fake_birthday(original_birthday):
     """Generates a fake birthday, keep the year"""
+    if original_birthday == "":
+        return 2000+random.randint(1, 12)+random.randint(1,28)
     year = original_birthday[:4]
     if calculate_age(int(original_birthday[:4]),int(original_birthday[4:6]),int(original_birthday[6:8])) >= 90:
         year = "1935"
@@ -130,7 +134,7 @@ def generate_account_number():
     return AccountNumber
 
 # Function to generate a random address
-def generate_random_address():
+def generate_random_address(state):
     street_number = random.randint(100, 9999)  # House/building number
     street = f"{random.choice(street_names)} {random.choice(street_types)}"
     city = random.choice(cities)
@@ -138,4 +142,4 @@ def generate_random_address():
     precinct = random.choice(precincts) + " Precinct"
     zip_code = random.choice(zip_codes)
 
-    return f"{street_number} {street}, {city}, {county}, {precinct}, {zip_code}"
+    return f"{street_number} {street}, {city}, {county}, {precinct}, {state} ,{zip_code}"
