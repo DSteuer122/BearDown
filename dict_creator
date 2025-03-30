@@ -300,6 +300,7 @@ def compile(input_file, patient_dict, message_map, output_file):
     """
     messages = parse_hl7_messages(input_file)
     modified_messages = []
+    doctor_dict = {}
     
     for message_idx, message in enumerate(messages):
         h = hl7.parse(message)
@@ -312,7 +313,15 @@ def compile(input_file, patient_dict, message_map, output_file):
             # Process each segment in the message
             for segment in h:
                 segment_type = str(segment[0]).strip()
-                
+                if str(segment[0]).strip() == 'PV1':
+                    name_string = str(segment[8])
+                    if name_string not in doctor_dict:
+                        lname, fname = RG.generate_unique_fake_name()
+                        doctor_dict[name_string] = f"^{lname}^{fname}^^^^MD"
+                        segment[8] = doctor_dict[name_string]
+                    else:
+                        segment[8] = doctor_dict[name_string]
+                        
                 if segment_type == 'PID':
                     # Handle PID segments as before
                     List = split_message_lines(str(segment))
@@ -364,12 +373,12 @@ def compile(input_file, patient_dict, message_map, output_file):
     return f"Modified {len(modified_messages)} HL7 messages written to {output_file}"
 
 def main():
-    input_file = 'raw.txt'
+    input_file = 'raw2.txt'
     output_mapping = 'output.txt'
     output_messages = 'fixed.txt'
     
     # Extract unique patients and create mapping
-    patient_dict, message_map = extract_unique_patients(input_file, output_mapping)
+    patient_dict, message_map= extract_unique_patients(input_file, output_mapping)
     
     # Compile modified messages
     result = compile(input_file, patient_dict, message_map, output_messages)
