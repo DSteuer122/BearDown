@@ -14,11 +14,13 @@ def parse_hl7_messages():
         for message in messages:
             h = hl7.parse(message)
             for segment in h:
+                if str(segment[0]).strip() == 'MSH':
+                    MessageID = str(segment[10]).strip()
                 if str(segment[0]).strip() == 'PID':
                     mrn = str(segment[4]).strip() if len(segment) > 4 else "N/A"
                     lname, fname = str(segment[5]).split("^")[:2] if len(segment) > 5 else ("N/A", "N/A")
                     birthdate = str(segment[7]).strip() if len(segment) > 7 else "N/A"
-                    parsed_messages.append({"MRN": mrn, "Last Name": lname, "First Name": fname, "Birthdate": birthdate, "Raw Message": message})
+                    parsed_messages.append({"Message Control ID": MessageID, "MRN": mrn, "Last Name": lname, "First Name": fname, "Birthdate": birthdate, "Raw Message": message})
         
         return pd.DataFrame(parsed_messages)
     except FileNotFoundError:
@@ -35,10 +37,13 @@ if not df.empty:
     st.write("### HL7 Messages")
 
     # Search filter
+    search_MessageID = st.text_input("Search by MessageID")
     search_mrn = st.text_input("Search by MRN")
     search_name = st.text_input("Search by Last Name")
 
     filtered_df = df.copy()
+    if search_MessageID:
+        filtered_df = filtered_df[filtered_df["Message Control ID"].str.contains(search_MessageID, na=False)]
     if search_mrn:
         filtered_df = filtered_df[filtered_df["MRN"].str.contains(search_mrn, na=False)]
     if search_name:
