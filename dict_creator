@@ -1,4 +1,5 @@
 import hl7
+import re
 
 def name_parse(name_string):
     parts = name_string.split("^")  # Split by '^'
@@ -12,7 +13,39 @@ def parse_hl7_messages(file_path):
     
     messages = ["MSH|" + msg.strip().replace('\n', '\r') for msg in data.split('MSH|') if msg.strip()]
     return messages
+def parse_identifiers25(input_str):
+    pattern = r"(W\d+)\^\^\^UAReg\^(MR|PI|AN)"
 
+    matches = re.findall(pattern, input_str)
+
+    parsed_data = {value: code for code, value in matches}
+
+    return parsed_data
+def parse_identifiers24(input_str):
+
+    pattern = r"([A\d-]+)\^\^\^\^([A-Z]+)\^HOST_VW"
+    
+    matches = re.findall(pattern, input_str)
+    
+    # Create a dictionary mapping each code to its corresponding identifier
+    parsed_data = {code: identifier for identifier, code in matches}
+    return parsed_data
+def parselist(h):
+    for segment in h:
+        if str(segment[0]).strip() == 'MSH':
+            vID = str(segment[12]).strip()
+    if vID == '2.5':
+        for segment in h:
+            if str(segment[0]).strip() == 'PID':
+                PFI = str(segment[3]).strip()  
+        PFI = parse_identifiers25(PFI)
+    if vID == '2.4':
+        for segment in h:
+            if str(segment[0]).strip() == 'PID':
+                PFI = str(segment[3]).strip()  
+        PFI = parse_identifiers24(PFI)
+    return PFI
+    
 def extract_unique_patients(input_file, output_file):
     messages = parse_hl7_messages(input_file)
     patient_dict = {}  # Dictionary to store unique patients
@@ -29,7 +62,17 @@ def extract_unique_patients(input_file, output_file):
                 AcctN = str(segment[18]).strip()
 
                 # Get MRN or fallback key if MRN is missing
-                mrn = str(segment[4]).strip() if len(segment) > 4 else ''
+                mrn = str(segment[3]).strip()
+                #checks for PID.3 edge cases and repairs them
+                if len(mrn) > 15:
+                    print(h)
+                    PFIlist = parselist(h)
+                    if len(PFIlist) == 3:
+                        mrn = PFIlist['MR']
+                        AcctN = PFIlist['AN']
+                    elif len(PFIlist) == 5:
+                        mrn = PFIlist['MR']
+                        SSN = PFIlist['SS']
                 patient_key = mrn if mrn else f"{lname}_{fname}_{birthdate}"
 
                 new_data = {
