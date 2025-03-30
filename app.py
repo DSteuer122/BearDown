@@ -1,8 +1,9 @@
 import streamlit as st
 import hl7
 import pandas as pd
+import math
 
-# Function to parse HL7 messages from raw.txt
+# Function to parse HL7 messages from fixed.txt and raw.txt
 def parse_hl7_messages():
     try:
         with open("fixed.txt", "r", encoding="utf-8") as file:
@@ -24,9 +25,21 @@ def parse_hl7_messages():
                     MessageID = str(segment[10]).strip()
                 if str(segment[0]).strip() == 'PID':
                     mrn = str(segment[4]).strip() if len(segment) > 4 else "N/A"
-                    lname, fname = str(segment[5]).split("^")[:2] if len(segment) > 5 else ("N/A", "N/A")
+                    # If the name field exists, split it; otherwise use N/A
+                    if len(segment) > 5 and "^" in str(segment[5]):
+                        lname, fname = str(segment[5]).split("^")[:2]
+                    else:
+                        lname, fname = "N/A", "N/A"
                     birthdate = str(segment[7]).strip() if len(segment) > 7 else "N/A"
-                    parsed_messages.append({"Message Control ID": MessageID, "MRN": mrn, "Last Name": lname, "First Name": fname, "Birthdate": birthdate, "Fixed Message": message, "Raw Message": current_raw_message})
+                    parsed_messages.append({
+                        "Message Control ID": MessageID, 
+                        "MRN": mrn, 
+                        "Last Name": lname, 
+                        "First Name": fname, 
+                        "Birthdate": birthdate, 
+                        "Fixed Message": message, 
+                        "Raw Message": current_raw_message
+                    })
         
         return pd.DataFrame(parsed_messages)
     except FileNotFoundError:
@@ -36,13 +49,13 @@ def parse_hl7_messages():
 # Streamlit UI
 st.title("HL7 Message Viewer")
 
-# Parse messages from raw.txt
+# Parse messages
 df = parse_hl7_messages()
 
 if not df.empty:
     st.write("### HL7 Messages")
 
-    # Search filter
+    # Search filters
     search_MessageID = st.text_input("Search by MessageID")
     search_mrn = st.text_input("Search by MRN")
     search_name = st.text_input("Search by Last Name")
@@ -55,12 +68,44 @@ if not df.empty:
     if search_name:
         filtered_df = filtered_df[filtered_df["Last Name"].str.contains(search_name, na=False)]
 
-    st.dataframe(filtered_df.iloc[:, :6])
+    # Pagination settings
+    items_per_page = 50
+    total_items = filtered_df.shape[0]
+    total_pages = math.ceil(total_items / items_per_page) if total_items > 0 else 1
 
-    # Select a message to view details
-    if not filtered_df.empty:
-        selected_index = st.selectbox("Select a message to view details", filtered_df.index)
-        st.write(f"### Fixed Message {selected_index} Details")
+    # Initialize pagination state
+    if "page" not in st.session_state:
+        st.session_state.page = 0
+
+    # Navigation buttons using columns
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        if st.button("⏮ First"):
+            st.session_state.page = 0
+    with col2:
+        if st.button("◀ Previous"):
+            if st.session_state.page > 0:
+                st.session_state.page -= 1
+    with col3:
+        if st.button("Next ▶"):
+            if st.session_state.page < total_pages - 1:
+                st.session_state.page += 1
+    with col4:
+        if st.button("Last ⏭"):
+            st.session_state.page = total_pages - 1
+
+    # Calculate the slice of data for the current page
+    start_idx = st.session_state.page * items_per_page
+    end_idx = start_idx + items_per_page
+    current_page_df = filtered_df.iloc[start_idx:end_idx]
+
+    st.write(f"Showing page {st.session_state.page + 1} of {total_pages}")
+    st.dataframe(current_page_df.iloc[:, :6])
+
+    # Select a message from the current page to view details
+    if not current_page_df.empty:
+        selected_index = st.selectbox("Select a message to view details", current_page_df.index)
+        st.write(f"### Fixed Message Details (Index: {selected_index})")
         st.text_area("Fixed HL7 Message", filtered_df.loc[selected_index, "Fixed Message"], height=200)
-        st.write(f"### Raw Message {selected_index} Details")
+        st.write(f"### Raw Message Details (Index: {selected_index})")
         st.text_area("Raw HL7 Message", filtered_df.loc[selected_index, "Raw Message"], height=200)
