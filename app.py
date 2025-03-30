@@ -29,7 +29,7 @@ def parse_hl7_messages():
                 if str(segment[0]).strip() == 'MSH':
                     MessageID = str(segment[10]).strip()
                 if str(segment[0]).strip() == 'PID':
-                    mrn = str(segment[4]).strip() if len(segment) > 4 else "N/A"
+                    mrn = str(segment[3]).strip() if len(segment) > 4 else "N/A"
                     if len(segment) > 5 and "^" in str(segment[5]):
                         lname, fname = str(segment[5]).split("^")[:2]
                     else:
@@ -145,11 +145,11 @@ if not df.empty:
 
     filtered_df = df.copy()
     if search_MessageID:
-        filtered_df = filtered_df[filtered_df["Message Control ID"].str.contains(search_MessageID, na=False)]
+        filtered_df = filtered_df[filtered_df["Message Control ID"].str.contains(search_MessageID, case=False, na=False)]
     if search_mrn:
-        filtered_df = filtered_df[filtered_df["MRN"].str.contains(search_mrn, na=False)]
+        filtered_df = filtered_df[filtered_df["MRN"].str.contains(search_mrn, case=False, na=False)]
     if search_name:
-        filtered_df = filtered_df[filtered_df["Last Name"].str.contains(search_name, na=False)]
+        filtered_df = filtered_df[filtered_df["Last Name"].str.contains(search_name, case=False, na=False)]
 
     items_per_page = 50
     total_items = filtered_df.shape[0]
