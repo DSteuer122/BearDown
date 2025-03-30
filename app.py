@@ -4,20 +4,20 @@ import pandas as pd
 import math
 import os
 
-# Function to parse HL7 messages from fixed.txt and raw.txt
+# Function to parse HL7 messages from messages_deidentified.txt and raw.txt
 def parse_hl7_messages():
     try:
         # Check if files exist before opening
-        if not os.path.exists("fixed.txt") or not os.path.exists("raw.txt"):
+        if not os.path.exists("messages_deidentified.txt") or not os.path.exists("raw.txt"):
             missing_files = []
-            if not os.path.exists("fixed.txt"):
-                missing_files.append("fixed.txt")
+            if not os.path.exists("messages_deidentified.txt"):
+                missing_files.append("messages_deidentified.txt")
             if not os.path.exists("raw.txt"):
                 missing_files.append("raw.txt")
             st.error(f"Error: {', '.join(missing_files)} file(s) not found. Please place the file(s) in the same directory as this script.")
             return pd.DataFrame()
         
-        with open("fixed.txt", "r", encoding="utf-8") as file:
+        with open("messages_deidentified.txt", "r", encoding="utf-8") as file:
             fixed_data = file.read()
         with open("raw.txt", "r", encoding="utf-8") as file:
             raw_data = file.read()
@@ -34,7 +34,7 @@ def parse_hl7_messages():
         
         # Validate message counts
         if len(fixed_messages) != len(raw_messages):
-            st.warning(f"Warning: Number of messages in fixed.txt ({len(fixed_messages)}) does not match raw.txt ({len(raw_messages)}). Some messages may be misaligned.")
+            st.warning(f"Warning: Number of messages in messages_deidentified.txt ({len(fixed_messages)}) does not match raw.txt ({len(raw_messages)}). Some messages may be misaligned.")
         
         parsed_messages = []
         for idx, message in enumerate(fixed_messages):
@@ -483,7 +483,7 @@ def main():
                 st.write("### Raw Message (Raw Text)")
                 st.text_area("Raw Message", filtered_df.loc[selected_index, "Raw Message"], height=200)
     else:
-        st.info("No messages to display. Please check your HL7 files (fixed.txt and raw.txt).")
+        st.info("No messages to display. Please check your HL7 files (messages_deidentified.txt and raw.txt).")
 
 if __name__ == "__main__":
     main()
