@@ -2,6 +2,86 @@ import hl7
 import re
 import RandomGenerator as RG
 import json
+import datetime
+from difflib import SequenceMatcher
+
+def normalize_date(date_string):
+    """
+    Parse and normalize different date formats to a standard format.
+    Handles various date formats and returns a standardized YYYYMMDD format.
+    """
+    if not date_string:
+        return None
+        
+    # Store original for comparison
+    original = date_string
+        
+    # Strip any non-alphanumeric characters for processing
+    cleaned = re.sub(r'[^\w\s]', ' ', date_string.strip())
+    
+    # Try different date formats
+    formats = [
+        # Standard HL7 format
+        '%Y%m%d',
+        # Common variations
+        '%m/%d/%Y', '%d/%m/%Y', '%Y/%m/%d',
+        '%m-%d-%Y', '%d-%m-%Y', '%Y-%m-%d',
+        '%m.%d.%Y', '%d.%m.%Y', '%Y.%m.%d',
+        # With textual month
+        '%b %d, %Y', '%d %b, %Y', '%Y, %b %d',
+        '%B %d, %Y', '%d %B, %Y', '%Y, %B %d',
+        # Two-digit year variations
+        '%m/%d/%y', '%d/%m/%y', '%y/%m/%d',
+        '%m-%d-%y', '%d-%m-%y', '%y-%m-%d',
+    ]
+    
+    for fmt in formats:
+        try:
+            date_obj = datetime.datetime.strptime(cleaned, fmt)
+            # Return in standard HL7 format
+            normalized = date_obj.strftime('%Y%m%d')
+            return normalized
+        except ValueError:
+            continue
+    
+    # If we can't parse it with standard formats, try regex patterns
+    # Pattern for "YYYYMMDD"
+    match = re.search(r'(\d{4})(\d{2})(\d{2})', cleaned)
+    if match:
+        year, month, day = match.groups()
+        try:
+            date_obj = datetime.datetime(int(year), int(month), int(day))
+            normalized = date_obj.strftime('%Y%m%d')
+            return normalized
+        except ValueError:
+            pass
+    
+    # Pattern for "MMDDYYYY" or "DDMMYYYY"
+    match = re.search(r'(\d{1,2})[^\d]+(\d{1,2})[^\d]+(\d{4})', cleaned)
+    if match:
+        # Try both MM/DD/YYYY and DD/MM/YYYY interpretations
+        for month_idx, day_idx in [(0, 1), (1, 0)]:
+            try:
+                month = int(match.group(month_idx + 1))
+                day = int(match.group(day_idx + 1))
+                year = int(match.group(3))
+                date_obj = datetime.datetime(year, month, day)
+                normalized = date_obj.strftime('%Y%m%d')
+                return normalized
+            except ValueError:
+                continue
+    
+    # Return original if we couldn't parse it
+    return date_string
+
+def is_same_date(date1, date2):
+    """
+    Determine if two dates in different formats refer to the same actual date.
+    """
+    norm_date1 = normalize_date(date1)
+    norm_date2 = normalize_date(date2)
+    
+    return norm_date1 == norm_date2
 
 def name_parse(name_string):
     parts = name_string.split("^")  # Split by '^'
@@ -132,7 +212,7 @@ def extract_patient_data(segment):
 
 def find_matching_patient(patient_data, patient_dict):
     """
-    Finds a matching patient in the dictionary using various matching criteria.
+    Finds a matching patient in the dictionary using exact matching.
     Returns the matching key if found, None otherwise.
     """
     # First check MRN
@@ -147,27 +227,25 @@ def find_matching_patient(patient_data, patient_dict):
             if key.startswith(f"SSN_{patient_data['SSN']}"):
                 return key
     
-    # Check name + DOB
-    name_dob_key = f"NAME_{patient_data['last_name']}_{patient_data['first_name']}_{patient_data['birthdate']}"
-    if name_dob_key in patient_dict:
-        return name_dob_key
-    
-    # More relaxed matching (just last name + DOB if first name missing)
-    if not patient_data["first_name"] and patient_data["last_name"] and patient_data["birthdate"]:
+    # Check name + DOB with exact matching
+    if patient_data["last_name"] and patient_data["first_name"] and patient_data["birthdate"]:
+        name_dob_key = f"NAME_{patient_data['last_name'].strip()}_{patient_data['first_name'].strip()}_{normalize_date(patient_data['birthdate']).strip()}"
         for key in patient_dict:
-            if key.startswith(f"L_{patient_data['last_name']}_DOB_{patient_data['birthdate']}"):
+            if key == name_dob_key:
                 return key
-    
+                
     return None
 
 def extract_unique_patients(input_file, output_file):
     """
     Extracts unique patients from HL7 messages and creates a mapping file.
     Handles missing MRNs by using alternative identifiers.
+    Uses exact matching instead of fuzzy matching.
     """
     messages = parse_hl7_messages(input_file)
     patient_dict = {}  # Dictionary to store unique patients
     message_to_patient_map = {}  # Maps message index to patient key
+    
     
     # First pass: extract patient data and create a mapping
     for message_idx, message in enumerate(messages):
@@ -190,6 +268,9 @@ def extract_unique_patients(input_file, output_file):
                             patient_data["AcctN"] = PFIlist['AN']
                         if 'SS' in PFIlist:
                             patient_data["SSN"] = PFIlist['SS']
+                
+                # Normalize the birthdate
+                patient_data["birthdate"] = normalize_date(patient_data["birthdate"]) or patient_data["birthdate"]
                 
                 # Create a patient key based on available identifiers
                 patient_key = create_patient_key(
@@ -241,13 +322,6 @@ def extract_unique_patients(input_file, output_file):
                 # Map this message to the patient key
                 message_to_patient_map[message_idx] = patient_key
     
-    # Second pass: process messages with the mapping
-    for message_idx, message in enumerate(messages):
-        if message_idx in message_to_patient_map:
-            patient_key = message_to_patient_map[message_idx]
-            # Process the message using the mapped patient key...
-            # (processing logic will be in the compile function)
-    
     # Write unique patient keys to the output file
     with open(output_file, 'w', encoding='utf-8') as file:
         for key in patient_dict:
@@ -262,7 +336,7 @@ def extract_unique_patients(input_file, output_file):
 def sanitize_non_pid_segment(segment_text, patient_data):
     """
     Sanitizes non-PID segments by replacing any occurrences of sensitive patient data
-    with a single asterisk.
+    with a single asterisk. Uses exact matches only.
     
     Args:
         segment_text (str): Text of the segment to be sanitized
@@ -289,12 +363,32 @@ def sanitize_non_pid_segment(segment_text, patient_data):
     
     # Replace each sensitive data with an asterisk
     sanitized_text = segment_text
+    
+    # Handle exact matches
     for data in sensitive_data:
         sanitized_text = re.sub(re.escape(data), "*", sanitized_text)
     
+    # Check for date in various formats
+    birthdate = patient_data.get("birthdate", "")
+    if birthdate and len(birthdate) > 5:
+        # Extract all potential dates from the segment
+        # Common date patterns
+        date_patterns = [
+            r'\d{1,2}[-/\.]\d{1,2}[-/\.]\d{2,4}',  # MM/DD/YYYY, DD/MM/YYYY, etc.
+            r'\d{4}[-/\.]\d{1,2}[-/\.]\d{1,2}',    # YYYY/MM/DD, etc.
+            r'\d{8}',                               # YYYYMMDD
+            r'[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}',  # Month DD, YYYY
+            r'\d{1,2}\s+[A-Za-z]{3,9},?\s+\d{4}'   # DD Month, YYYY
+        ]
+        
+        for pattern in date_patterns:
+            potential_dates = re.findall(pattern, sanitized_text)
+            for date_str in potential_dates:
+                if is_same_date(date_str, birthdate):
+                    sanitized_text = sanitized_text.replace(date_str, "*")
+    
     return sanitized_text
 
-    
 def compile(input_file, patient_dict, message_map, output_file):
     """
     Compiles modified HL7 messages using the patient dictionary and message mapping.
@@ -411,12 +505,13 @@ def main():
     output_mapping = 'output.txt'
     output_messages = 'fixed.txt'
     
+    
     # Extract unique patients and create mapping
-    patient_dict, message_map= extract_unique_patients(input_file, output_mapping)
+    patient_dict, message_map = extract_unique_patients(input_file, output_mapping)
     
     # Compile modified messages
     result = compile(input_file, patient_dict, message_map, output_messages)
-    print(result)
+
 
 if __name__ == "__main__":
     main()
