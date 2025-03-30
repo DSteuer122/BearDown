@@ -7,41 +7,24 @@ from difflib import SequenceMatcher
 
 def filter_messages_with_mrn(input_file, output_file):
     """
-    Parses through raw.txt, removes messages without an MRN in PID.3,
-    and writes the filtered messages to a new file.
+    Parses through raw.txt and identifies messages with MRN in PID.3,
+    but keeps all messages, writing them to a new file.
     
     Args:
         input_file (str): Path to the input HL7 file
-        output_file (str): Path to write filtered messages
+        output_file (str): Path to write all messages
         
     Returns:
-        str: Path to the filtered output file
+        str: Path to the output file with all messages
     """
     messages = parse_hl7_messages(input_file)
-    filtered_messages = []
     
-    for message in messages:
-        h = hl7.parse(message)
-        has_mrn = False
-        
-        for segment in h:
-            if str(segment[0]).strip() == 'PID':
-                mrn_field = str(segment[3]).strip()
-                # Check if MRN field exists and is not empty
-                if len(mrn_field) > 0:
-                    has_mrn = True
-                break
-        
-        if has_mrn:
-            filtered_messages.append(message)
-    
-    # Write filtered messages to output file
+    # Write all messages to output file (no filtering)
     with open(output_file, 'w', encoding='utf-8') as f:
-        for msg in filtered_messages:
+        for msg in messages:
             f.write(msg + "\n")
     
-    print(f"Filtered {len(messages) - len(filtered_messages)} messages without MRN. "
-          f"{len(filtered_messages)} messages remaining.")
+    print(f"Processed {len(messages)} messages. All messages retained.")
     return output_file
 
 def normalize_date(date_string):
@@ -302,124 +285,123 @@ def find_matching_patient(patient_data, patient_dict):
 def extract_unique_patients(input_file, output_file):
     """
     Extracts unique patients from HL7 messages and creates a mapping file.
-    Handles missing MRNs by using alternative identifiers.
-    Uses exact matching instead of fuzzy matching.
-    Randomizes GT1 (Guarantor) and NK1 (Next of Kin) names, ensuring consistency
-    when GT1 and NK1 refer to the same person, while assigning unique names
-    to multiple NK1s or GT1s.
+    Messages without MRN are kept but not added to patient_dict.
+    Sensitive data in those messages will be redacted later.
     """
     messages = parse_hl7_messages(input_file)
-    patient_dict = {}  # Dictionary to store unique patients
-    message_to_patient_map = {}  # Maps message index to patient key
-    gt1_nk1_dict = {}  # Stores fake names for GT1 and NK1 to ensure consistency
+    patient_dict = {}  # Dictionary to store unique patients with MRN
+    message_to_patient_map = {}  # Maps message index to patient key or None
+    gt1_nk1_dict = {}  # Stores fake names for GT1 and NK1 consistency
 
-    # First pass: extract patient data and create a mapping
+    # Process all messages
     for message_idx, message in enumerate(messages):
         h = hl7.parse(message)
         patient_data = None
+        has_mrn = False
 
+        # First check for MRN
         for segment in h:
-            segment_type = str(segment[0]).strip()
-
-            if segment_type == 'PID':
-                # Extract patient data
+            if str(segment[0]).strip() == 'PID':
                 patient_data = extract_patient_data(segment)
-                mrn = patient_data["mrn"]
-                
-                # Handle complex PID.3 cases
-                if len(mrn) > 15:
-                    PFIlist = parselist(h)
-                    if isinstance(PFIlist, dict):
-                        if 'MR' in PFIlist:
-                            patient_data["mrn"] = PFIlist['MR']
-                            mrn = PFIlist['MR']
-                        if 'AN' in PFIlist:
-                            patient_data["AcctN"] = PFIlist['AN']
-                        if 'SS' in PFIlist:
-                            patient_data["SSN"] = PFIlist['SS']
-                
-                # Normalize the birthdate
-                patient_data["birthdate"] = normalize_date(patient_data["birthdate"]) or patient_data["birthdate"]
-                
-                # Create a patient key based on available identifiers
-                patient_key = create_patient_key(
-                    patient_data["mrn"], 
-                    patient_data["last_name"], 
-                    patient_data["first_name"], 
-                    patient_data["birthdate"], 
-                    patient_data["SSN"]
-                )
-                
-                # Check if a similar patient already exists
-                existing_key = find_matching_patient(patient_data, patient_dict)
-                
-                if existing_key:
-                    # Use the existing patient key
-                    patient_key = existing_key
-                    # Merge the data with the existing patient record
-                    existing_data = patient_dict[existing_key]
-                    for key, value in patient_data.items():
-                        if value and not existing_data.get(key):
-                            existing_data[key] = value
-                else:
-                    # This is a new patient
-                    # Generate fake data for this patient
-                    fake_MRN = RG.generate_MRN()
-                    fake_lname, fake_fname = RG.generate_unique_fake_name()
-                    fake_birthdate = RG.generate_fake_birthday(patient_data["birthdate"])
-                    fake_hphone = RG.generate_phone_number()
-                    fake_bphone = RG.generate_phone_number()
-                    fake_SSN = RG.generate_SSN()
-                    fake_AcctN = RG.generate_account_number()
-                    fake_Address = RG.generate_random_address(patient_data["state"])
+                mrn_field = patient_data["mrn"]
+                if mrn_field and len(mrn_field.strip()) > 0:
+                    has_mrn = True
+                break
+
+        # Map all messages, even those without MRN
+        message_to_patient_map[message_idx] = None  # Default for no MRN
+
+        if has_mrn:
+            # Process patient with MRN
+            for segment in h:
+                segment_type = str(segment[0]).strip()
+                if segment_type == 'PID':
+                    mrn = patient_data["mrn"]
                     
-                    # Add fake data to patient record
-                    patient_data.update({
-                        "fake_mrn": fake_MRN,
-                        "fake_first_name": fake_fname,
-                        "fake_last_name": fake_lname,
-                        "fake_birthdate": fake_birthdate,
-                        "fake_hphone": fake_hphone,
-                        "fake_bphone": fake_bphone,
-                        "fake_SSN": fake_SSN,
-                        "fake_AcctN": fake_AcctN,
-                        "fake_Address": fake_Address
-                    })
+                    # Handle complex PID.3 cases
+                    if len(mrn) > 15:
+                        PFIlist = parselist(h)
+                        if isinstance(PFIlist, dict):
+                            if 'MR' in PFIlist:
+                                patient_data["mrn"] = PFIlist['MR']
+                                mrn = PFIlist['MR']
+                            if 'AN' in PFIlist:
+                                patient_data["AcctN"] = PFIlist['AN']
+                            if 'SS' in PFIlist:
+                                patient_data["SSN"] = PFIlist['SS']
                     
-                    patient_dict[patient_key] = patient_data
-                
-                # Map this message to the patient key
-                message_to_patient_map[message_idx] = patient_key
+                    # Normalize the birthdate
+                    patient_data["birthdate"] = normalize_date(patient_data["birthdate"]) or patient_data["birthdate"]
+                    
+                    # Create a patient key
+                    patient_key = create_patient_key(
+                        patient_data["mrn"], 
+                        patient_data["last_name"], 
+                        patient_data["first_name"], 
+                        patient_data["birthdate"], 
+                        patient_data["SSN"]
+                    )
+                    
+                    # Check for existing patient
+                    existing_key = find_matching_patient(patient_data, patient_dict)
+                    
+                    if existing_key:
+                        patient_key = existing_key
+                        existing_data = patient_dict[existing_key]
+                        for key, value in patient_data.items():
+                            if value and not existing_data.get(key):
+                                existing_data[key] = value
+                    else:
+                        # New patient with MRN
+                        fake_MRN = RG.generate_MRN()
+                        fake_lname, fake_fname = RG.generate_unique_fake_name()
+                        fake_birthdate = RG.generate_fake_birthday(patient_data["birthdate"])
+                        fake_hphone = RG.generate_phone_number()
+                        fake_bphone = RG.generate_phone_number()
+                        fake_SSN = RG.generate_SSN()
+                        fake_AcctN = RG.generate_account_number()
+                        fake_Address = RG.generate_random_address(patient_data["state"])
+                        
+                        patient_data.update({
+                            "fake_mrn": fake_MRN,
+                            "fake_first_name": fake_fname,
+                            "fake_last_name": fake_lname,
+                            "fake_birthdate": fake_birthdate,
+                            "fake_hphone": fake_hphone,
+                            "fake_bphone": fake_bphone,
+                            "fake_SSN": fake_SSN,
+                            "fake_AcctN": fake_AcctN,
+                            "fake_Address": fake_Address
+                        })
+                        patient_dict[patient_key] = patient_data
+                        message_to_patient_map[message_idx] = patient_key
 
-            elif segment_type in ['GT1', 'NK1']:
-                # Extract name from the GT1 or NK1 segment
-                name_field = str(segment[2]).strip()  # Usually field 2 for both GT1 and NK1
-                lname, fname = name_parse(name_field)
+                elif segment_type in ['GT1', 'NK1']:
+                    name_field = str(segment[2]).strip()
+                    lname, fname = name_parse(name_field)
 
-                # Ensure GT1 and NK1 get the same fake name if they match
-                if name_field in gt1_nk1_dict:
-                    fake_lname, fake_fname = gt1_nk1_dict[name_field]
-                else:
-                    fake_lname, fake_fname = RG.generate_unique_fake_name()
-                    fake_lname2, fake_fname2 = RG.generate_unique_fake_name()
-                    gt1_nk1_dict[name_field] = (fake_lname, fake_fname)
+                    if name_field in gt1_nk1_dict:
+                        fake_lname, fake_fname = gt1_nk1_dict[name_field]
+                    else:
+                        fake_lname, fake_fname = RG.generate_unique_fake_name()
+                        fake_lname2, fake_fname2 = RG.generate_unique_fake_name()
+                        gt1_nk1_dict[name_field] = (fake_lname, fake_fname)
 
-                # Assign fake GT1/NK1 names to the patient dictionary
-                if segment_type == 'GT1':
-                    patient_dict[patient_key]["fake_GT1_first_name"] = fake_fname
-                    patient_dict[patient_key]["fake_GT1_last_name"] = fake_lname
-                elif segment_type == 'NK1':
-                    patient_dict[patient_key]["fake_NK1_first_name"] = fake_fname
-                    patient_dict[patient_key]["fake_NK1_last_name"] = fake_lname
-                    patient_dict[patient_key]["fake_NK2_first_name"] = fake_fname2
-                    patient_dict[patient_key]["fake_NK2_last_name"] = fake_lname2
+                    if segment_type == 'GT1':
+                        patient_dict[patient_key]["fake_GT1_first_name"] = fake_fname
+                        patient_dict[patient_key]["fake_GT1_last_name"] = fake_lname
+                    elif segment_type == 'NK1':
+                        patient_dict[patient_key]["fake_NK1_first_name"] = fake_fname
+                        patient_dict[patient_key]["fake_NK1_last_name"] = fake_lname
+                        patient_dict[patient_key]["fake_NK2_first_name"] = fake_fname2
+                        patient_dict[patient_key]["fake_NK2_last_name"] = fake_lname2
 
     # Write unique patient keys to the output file
     with open(output_file, 'w', encoding='utf-8') as file:
         for key in patient_dict:
             file.write(key + '\n')
     
-    # Save the complete patient dictionary
+    # Save the patient dictionary
     with open('result.json', 'w', encoding='utf-8') as fp:
         json.dump(patient_dict, fp, indent=4)
     
@@ -498,10 +480,10 @@ def replace_identifiers25(input_string, first_id, third_id):
         modified_string = modified_string.replace(matches[2], third_id, 1)
         return modified_string
     return input_string
-
 def compile(input_file, patient_dict, message_map, output_file):
     """
-    Compiles modified HL7 messages using the patient dictionary and message mapping.
+    Compiles modified HL7 messages. Messages without MRN (None in message_map)
+    have sensitive data redacted.
     """
     messages = parse_hl7_messages(input_file)
     modified_messages = []
@@ -511,44 +493,46 @@ def compile(input_file, patient_dict, message_map, output_file):
         h = hl7.parse(message)
         modified_message = message
         vID = ''
-        if message_idx in message_map:
-            patient_key = message_map[message_idx]
+        
+        # Get patient key (could be None if no MRN)
+        patient_key = message_map.get(message_idx)
+        
+        if patient_key is not None and patient_key in patient_dict:
+            # Process messages with MRN
             patient_data = patient_dict[patient_key]
             
-            # Process each segment in the message
             for segment_idx, segment in enumerate(h):
                 segment_type = str(segment[0]).strip()
                 
                 if segment_type == 'MSH':
                     vID = str(segment[12]).strip()
                 if segment_type == 'PV1':
-                    # Handle PV1 segment (doctor information)
                     name_string = str(segment[7])
                     if name_string not in doctor_dict:
                         lname, fname = RG.generate_unique_fake_name()
                         docID = ''
-                        if len(lname)>3 and len(lname) > 2:
+                        if len(lname)>3 and len(fname)>2:
                             docID = (lname[:3] + fname[:2]).upper()
-                        elif len(lname) > 4:
-                            docID = lname[:4].lower() 
+                        elif len(lname)>4:
+                            docID = lname[:4].lower()
                         doctor_dict[name_string] = f"{docID}^{lname}^{fname}^^^^MD"
                     name_string1 = str(segment[8])
                     if name_string1 not in doctor_dict:
                         lname, fname = RG.generate_unique_fake_name()
                         docID = ''
-                        if len(lname)>3 and len(lname) > 2:
+                        if len(lname)>3 and len(fname)>2:
                             docID = (lname[:3] + fname[:2]).upper()
-                        elif len(lname) > 4:
-                            docID = lname[:4].lower() 
+                        elif len(lname)>4:
+                            docID = lname[:4].lower()
                         doctor_dict[name_string1] = f"{docID}^{lname}^{fname}^^^^MD"
                     name_string2 = str(segment[9])
                     if name_string2 not in doctor_dict:
                         lname, fname = RG.generate_unique_fake_name()
                         docID = ''
-                        if len(lname)>3 and len(lname) > 2:
+                        if len(lname)>3 and len(fname)>2:
                             docID = (lname[:3] + fname[:2]).upper()
-                        elif len(lname) > 4:
-                            docID = lname[:4].lower() 
+                        elif len(lname)>4:
+                            docID = lname[:4].lower()
                         doctor_dict[name_string2] = f"{docID}^{lname}^{fname}^^^^MD"
                     List = split_message_lines(str(segment))
                     
@@ -558,26 +542,18 @@ def compile(input_file, patient_dict, message_map, output_file):
                         if List[0][8] != '':
                             List[0][8] = doctor_dict[name_string1]
                         if List[0][9] != '':
-                            List[0][9] = doctor_dict[name_string2]   
+                            List[0][9] = doctor_dict[name_string2]
                     modified_pv1 = '|'.join(List[0])
-                    
-                    # Replace PID segment in the message
-                    modified_message = modified_message.replace(str(segment), modified_pv1, 1)   
-        
+                    modified_message = modified_message.replace(str(segment), modified_pv1, 1)
+                
                 if segment_type == 'PID':
-                    # Handle PID segments as before
                     List = split_message_lines(str(segment))
                     if vID == '2.4':
                         if len(List) > 0 and len(List[0]) > 3:
-                            # Replace fields with anonymized data
                             if List[0][3] != '':
-                                List[0][3] = replace_identifiers24(List[0][3],patient_data['fake_mrn'], patient_data['fake_SSN'])
+                                List[0][3] = replace_identifiers24(List[0][3], patient_data['fake_mrn'], patient_data['fake_SSN'])
                             if List[0][5] != '':
-                                List[0][5] = replace_first_two_entries(
-                                    List[0][5], 
-                                    patient_data['fake_last_name'].lower(), 
-                                    patient_data['fake_first_name'].lower()
-                                )
+                                List[0][5] = replace_first_two_entries(List[0][5], patient_data['fake_last_name'].lower(), patient_data['fake_first_name'].lower())
                             if List[0][7] != '':
                                 List[0][7] = patient_data["fake_birthdate"]
                             if List[0][11] != '' and List[0][11] != '^^^^^^^^':
@@ -590,17 +566,12 @@ def compile(input_file, patient_dict, message_map, output_file):
                                 List[0][18] = patient_data["fake_AcctN"]
                             if len(List[0]) > 19 and List[0][19] != '':
                                 List[0][19] = patient_data["fake_SSN"]
-                    if vID == '2.5':
+                    elif vID == '2.5':
                         if len(List) > 0 and len(List[0]) > 3:
-                            # Replace fields with anonymized data
                             if List[0][3] != '':
-                                List[0][3] = replace_identifiers25(List[0][3],patient_data['fake_mrn'], patient_data['fake_AcctN'])
+                                List[0][3] = replace_identifiers25(List[0][3], patient_data['fake_mrn'], patient_data['fake_AcctN'])
                             if List[0][5] != '':
-                                List[0][5] = replace_first_two_entries(
-                                    List[0][5], 
-                                    patient_data['fake_last_name'].lower(), 
-                                    patient_data['fake_first_name'].lower()
-                                )
+                                List[0][5] = replace_first_two_entries(List[0][5], patient_data['fake_last_name'].lower(), patient_data['fake_first_name'].lower())
                             if List[0][7] != '':
                                 List[0][7] = patient_data["fake_birthdate"]
                             if List[0][11] != '' and List[0][11] != '^^^^^^^^':
@@ -612,18 +583,13 @@ def compile(input_file, patient_dict, message_map, output_file):
                             if List[0][18] != '':
                                 List[0][18] = patient_data["fake_AcctN"]
                             if len(List[0]) > 19 and List[0][19] != '':
-                                List[0][19] = patient_data["fake_SSN"] 
+                                List[0][19] = patient_data["fake_SSN"]
                     else:
                         if len(List) > 0 and len(List[0]) > 3:
-                            # Replace fields with anonymized data
                             if List[0][3] != '':
                                 List[0][3] = patient_data["fake_mrn"]
                             if List[0][5] != '':
-                                List[0][5] = replace_first_two_entries(
-                                    List[0][5], 
-                                    patient_data['fake_last_name'].lower(), 
-                                    patient_data['fake_first_name'].lower()
-                                )
+                                List[0][5] = replace_first_two_entries(List[0][5], patient_data['fake_last_name'].lower(), patient_data['fake_first_name'].lower())
                             if List[0][7] != '':
                                 List[0][7] = patient_data["fake_birthdate"]
                             if List[0][11] != '' and List[0][11] != '^^^^^^^^':
@@ -637,19 +603,13 @@ def compile(input_file, patient_dict, message_map, output_file):
                             if len(List[0]) > 19 and List[0][19] != '':
                                 List[0][19] = patient_data["fake_SSN"]
                     
-                    # Reconstruct the modified PID segment
                     modified_pid = '|'.join(List[0])
-                    
-                    # Replace PID segment in the message
                     modified_message = modified_message.replace(str(segment), modified_pid, 1)
                 
                 if segment_type == 'NK1':
-                    
-                    # Process all NK1 segments separately, using different names for each
                     List = split_message_lines(str(segment))
                     ognk = List[0][2].strip()
-                    nk1_index = List[0][1].strip()  # Unique ID based on segment position
-                    # Assign unique fake names for each NK1 segment
+                    nk1_index = List[0][1].strip()
                     if nk1_index == '1':
                         nk1_first_name = patient_data['fake_NK1_first_name']
                         nk1_last_name = patient_data['fake_NK1_last_name']
@@ -660,66 +620,84 @@ def compile(input_file, patient_dict, message_map, output_file):
                         nk1_first_name = patient_data['fake_NK1_first_name']
                         nk1_last_name = patient_data['fake_NK1_last_name']
                     
-                    # Update the NK1 segment with unique data
                     if List[0][2] != '':
-                        List[0][2] = replace_first_two_entries(
-                                List[0][2], 
-                                nk1_last_name.lower(), 
-                                nk1_first_name.lower()
-                            )
+                        List[0][2] = replace_first_two_entries(List[0][2], nk1_last_name.lower(), nk1_first_name.lower())
                     if List[0][4] != '':
                         List[0][4] = patient_data['fake_Address']
                     if List[0][5] != '':
                         List[0][5] = patient_data['fake_hphone']
                     modified_nk1 = '|'.join(List[0])
-
-                    # Replace NK1 segment in the message
                     modified_message = modified_message.replace(str(segment), modified_nk1, 1)
 
                 if segment_type == 'GT1':
                     List = split_message_lines(str(segment))
                     if List[0][3].strip() == ognk:
                         if List[0][3] != '':
-                            List[0][3] = replace_first_two_entries(
-                                List[0][3], 
-                                patient_data['fake_NK1_last_name'].lower(), 
-                                patient_data['fake_NK1_first_name'].lower()
-                            )
+                            List[0][3] = replace_first_two_entries(List[0][3], patient_data['fake_NK1_last_name'].lower(), patient_data['fake_NK1_first_name'].lower())
                     else:
                         if List[0][3] != '':
-                            List[0][3] = replace_first_two_entries(
-                                    List[0][3], 
-                                    patient_data['fake_GT1_last_name'].lower(), 
-                                    patient_data['fake_GT1_first_name'].lower()
-                                )
+                            List[0][3] = replace_first_two_entries(List[0][3], patient_data['fake_GT1_last_name'].lower(), patient_data['fake_GT1_first_name'].lower())
                     if List[0][5] != '':
                         List[0][5] = patient_data['fake_Address']
                     if List[0][6] != '':
                         List[0][6] = patient_data['fake_hphone']
                     modified_gt1 = '|'.join(List[0])
-                    
-                    # Replace PID segment in the message
                     modified_message = modified_message.replace(str(segment), modified_gt1, 1)
+                
                 else:
-                    # For non-PID segments, sanitize any sensitive data
                     segment_text = str(segment)
                     sanitized_segment = sanitize_non_pid_segment(segment_text, patient_data)
-                    
-                    # Replace the segment in the modified message if changes were made
                     if sanitized_segment != segment_text:
                         modified_message = modified_message.replace(segment_text, sanitized_segment, 1)
         
+        else:
+            # Handle messages without MRN - redact all sensitive data
+            for segment_idx, segment in enumerate(h):
+                segment_type = str(segment[0]).strip()
+                
+                if segment_type not in ['MSH']:  # Preserve MSH segment
+                    segment_text = str(segment)
+                    redacted_segment = redact_sensitive_data(segment_text)
+                    if redacted_segment != segment_text:
+                        modified_message = modified_message.replace(segment_text, redacted_segment, 1)
+        
         modified_messages.append(modified_message)
     
-    # Write modified messages to output file
+    # Write all modified messages to output file
     with open(output_file, 'w') as f:
         for mod_msg in modified_messages:
             f.write(mod_msg + "\n")
     
     return f"Modified {len(modified_messages)} HL7 messages written to {output_file}"
+def redact_sensitive_data(segment_text):
+    """
+    Redacts all numbers and potentially sensitive data in a segment by replacing them
+    with asterisks, while preserving the leading segment identifier (e.g., PID, OBX, etc.).
+    """
+    # Split the segment into the identifier and the rest
+    if '|' not in segment_text:
+        return segment_text  # If no delimiter, return unchanged (shouldn't happen in HL7)
+    
+    segment_parts = segment_text.split('|', 1)  # Split on first '|' only
+    segment_id = segment_parts[0]  # e.g., "PID", "OBX"
+    segment_content = segment_parts[1] if len(segment_parts) > 1 else ""
 
+    # Patterns for sensitive data, including all numbers
+    patterns = [
+        r'\d+',                # Any sequence of digits (covers all numbers)
+        r'[A-Za-z]+',          # Names (conservative approach)
+    ]
+    
+    # Redact the content part only
+    redacted_content = segment_content
+    for pattern in patterns:
+        redacted_content = re.sub(pattern, "*", redacted_content)
+    
+    # Reconstruct the segment with the original identifier
+    redacted_segment = f"{segment_id}|{redacted_content}"
+    
+    return redacted_segment
 
-# [All other existing functions remain unchanged: is_same_date, name_parse, etc.]
 
 def main():
     input_file = 'raw.txt'
