@@ -1,6 +1,5 @@
 import hl7
 
-
 def name_parse(name_string):
     parts = name_string.split("^")  # Split by '^'
     first = parts[0] if len(parts) > 0 else None
@@ -14,54 +13,60 @@ def parse_hl7_messages(file_path):
     messages = ["MSH|" + msg.strip().replace('\n', '\r') for msg in data.split('MSH|') if msg.strip()]
     return messages
 
-def extract_unique_mrns(input_file, output_file):
+def extract_unique_patients(input_file, output_file):
     messages = parse_hl7_messages(input_file)
-    mrn_dict = {}  # Dictionary to store unique MRNs
+    patient_dict = {}  # Dictionary to store unique patients
     
     for message in messages:
         h = hl7.parse(message)
         for segment in h:
             if str(segment[0]).strip() == 'PID':
-                if len(segment) > 4:  # Ensure PID-3 exists
-                    mrn = str(segment[4]).strip()
-                    lname, fname = name_parse(str(segment[5]))
-                    birthdate = str(segment[7]).strip()
-                    hphone = str(segment[13]).strip()
-                    bphone = str(segment[14]).strip()
-                    SSN = str(segment[19]).strip() if len(segment) > 19 else ''
-                    AcctN = str(segment[18]).strip()
-                    
-                    if mrn:
-                        new_data = {
-                            "mrn": mrn,
-                            "first name": fname,
-                            "last name": lname,
-                            "birthdate": birthdate,
-                            "hphone": hphone,
-                            "bphone": bphone,
-                            "SSN": SSN,
-                            "AcctN": AcctN
-                        }
-                        
-                        if mrn in mrn_dict:
-                            # For each key, update only if the new value is non-empty and the existing value is empty.
-                            for key in new_data:
-                                if new_data[key] and not mrn_dict[mrn][key]:
-                                    mrn_dict[mrn][key] = new_data[key]
-                        else:
-                            mrn_dict[mrn] = new_data
+                lname, fname = name_parse(str(segment[5]))
+                birthdate = str(segment[7]).strip()
+                hphone = str(segment[13]).strip()
+                bphone = str(segment[14]).strip()
+                SSN = str(segment[19]).strip() if len(segment) > 19 else ''
+                AcctN = str(segment[18]).strip()
 
-    # Write unique MRNs to the output file
+                # Get MRN or fallback key if MRN is missing
+                mrn = str(segment[4]).strip() if len(segment) > 4 else ''
+                patient_key = mrn if mrn else f"{lname}_{fname}_{birthdate}"
+
+                new_data = {
+                    "mrn": mrn,
+                    "first name": fname,
+                    "last name": lname,
+                    "birthdate": birthdate,
+                    "hphone": hphone,
+                    "bphone": bphone,
+                    "SSN": SSN,
+                    "AcctN": AcctN
+                }
+
+                # Check if the patient already exists in dictionary and merge data
+                if patient_key in patient_dict:
+                    existing_data = patient_dict[patient_key]
+                    for key, value in new_data.items():
+                        if value and not existing_data.get(key):
+                            existing_data[key] = value
+                else:
+                    # Check if a patient with the name exists (keyed by the name)
+                    name_key = f"{lname}_{fname}_{birthdate}"
+                    if name_key in patient_dict:
+                        # If the name-based key exists, delete it before adding the MRN-based entry
+                        del patient_dict[name_key]
+                    patient_dict[patient_key] = new_data
+
+    # Write unique patient keys to the output file
     with open(output_file, 'w', encoding='utf-8') as file:
-        for mrn in mrn_dict:
-            file.write(mrn + '\n')
+        for key in patient_dict:
+            file.write(key + '\n')
             
-    return mrn_dict
-
-
-
-
+    return patient_dict
 
 # Call the function to write to "output.txt"
-mrn_dict = extract_unique_mrns('raw.txt', 'output.txt')
+patient_dict = extract_unique_patients('raw.txt', 'output.txt')
 
+import json
+with open('result.json', 'w') as fp:
+    json.dump(patient_dict, fp, indent=4)
