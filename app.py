@@ -46,6 +46,24 @@ def parse_hl7_messages():
         st.error("Error: raw.txt file not found. Please place the file in the same directory as this script.")
         return pd.DataFrame()
 
+# Helper function to display message lines in separate styled boxes with overflow protection
+def display_message_details(message_text):
+    # Replace carriage returns with newlines for proper display
+    lines = message_text.replace('\r', '\n').split("\n")
+    for line in lines:
+        if line.strip():
+            # Extract the box title from the beginning of the line (up to first "|")
+            header = line.split("|")[0]
+            # Use custom HTML for a non-editable styled box with white text and overflow protection
+            st.markdown(
+                f"""
+                <div style="background-color: #333; padding: 8px; margin: 4px 0; border-radius: 4px; overflow-wrap: break-word; word-wrap: break-word;">
+                    <div style="font-weight: bold; color: white;">{header}</div>
+                    <div style="color: white; white-space: pre-wrap; overflow-wrap: break-word; word-wrap: break-word;">{line}</div>
+                </div>
+                """, unsafe_allow_html=True
+            )
+
 # Streamlit UI
 st.title("HL7 Message Viewer")
 
@@ -105,7 +123,9 @@ if not df.empty:
     # Select a message from the current page to view details
     if not current_page_df.empty:
         selected_index = st.selectbox("Select a message to view details", current_page_df.index)
+        
         st.write(f"### Fixed Message Details (Index: {selected_index})")
-        st.text_area("Fixed HL7 Message", filtered_df.loc[selected_index, "Fixed Message"], height=200)
+        display_message_details(filtered_df.loc[selected_index, "Fixed Message"])
+        
         st.write(f"### Raw Message Details (Index: {selected_index})")
-        st.text_area("Raw HL7 Message", filtered_df.loc[selected_index, "Raw Message"], height=200)
+        display_message_details(filtered_df.loc[selected_index, "Raw Message"])
